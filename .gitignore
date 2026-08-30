@@ -1,0 +1,118 @@
+##############################################################################
+# RP2350 / Raspberry Pi Pico SDK (rp2350-display)
+##############################################################################
+rp2350-display/build/
+rp2350-display/build*/
+
+# Pico SDK / picotool artifacts
+*.uf2
+*.elf
+*.elf.map
+*.bin
+*.hex
+*.dis
+*.pio
+pioasm/
+elf2uf2/
+
+##############################################################################
+# ESP-IDF (esp32-ui)
+##############################################################################
+esp32-ui/build/
+esp32-ui/managed_components/
+esp32-ui/dependencies.lock
+esp32-ui/sdkconfig
+esp32-ui/sdkconfig.old
+esp32-ui/**/*.d
+esp32-ui/.mypy_cache/
+
+# ESP-IDF size/log artifacts
+*.map
+*.wroom
+
+##############################################################################
+# CMake (generic, both projects)
+##############################################################################
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+CMakeUserPresets.json
+
+##############################################################################
+# Ninja / Make
+##############################################################################
+.ninja_deps
+.ninja_log
+build.ninja
+Makefile
+
+##############################################################################
+# Compiler / linker intermediates
+##############################################################################
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.i
+*.ii
+*.gch
+*.pch
+*.su
+*.idb
+*.pdb
+
+##############################################################################
+# IDE / editor tooling config (not source) - ignore entirely
+##############################################################################
+.vscode/
+.devcontainer/
+.clangd
+.cache/
+compile_commands.json
+
+##############################################################################
+# Toolchain / SDK local installs (if ever vendored accidentally)
+##############################################################################
+pico-sdk/
+esp-idf/
+.pico-sdk/
+.espressif/
+
+##############################################################################
+# OS-generated files
+##############################################################################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+##############################################################################
+# Editor / IDE (generic)
+##############################################################################
+*.swp
+*.swo
+*~
+.idea/
+*.iml
+
+##############################################################################
+# Logs, temp, and misc
+##############################################################################
+*.log
+*.tmp
+*.bak
+*.orig
