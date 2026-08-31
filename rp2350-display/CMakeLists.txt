@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(rp2350-display main.c )
+add_executable(rp2350-display main.c board_init.c)
 
 pico_set_program_name(rp2350-display "rp2350-display")
 pico_set_program_version(rp2350-display "0.1")
