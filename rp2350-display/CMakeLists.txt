@@ -35,7 +35,12 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(rp2350-display main.c board_init.c)
+add_executable(rp2350-display
+    main.c
+    board_init.c
+    led_shift.c)
+
+pico_generate_pio_header(rp2350-display ${CMAKE_CURRENT_LIST_DIR}/led_shift.pio)
 
 pico_set_program_name(rp2350-display "rp2350-display")
 pico_set_program_version(rp2350-display "0.1")
@@ -46,7 +51,9 @@ pico_enable_stdio_usb(rp2350-display 1)
 
 # Add the standard library to the build
 target_link_libraries(rp2350-display
-        pico_stdlib)
+        pico_stdlib
+        hardware_pio
+        hardware_dma)
 
 # Add the standard include files to the build
 target_include_directories(rp2350-display PRIVATE
