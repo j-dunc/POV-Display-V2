@@ -38,7 +38,9 @@ pico_sdk_init()
 add_executable(rp2350-display
     main.c
     board_init.c
-    led_shift.c)
+    led_shift.c
+    frame_buffer.c
+    led_map.c)
 
 pico_generate_pio_header(rp2350-display ${CMAKE_CURRENT_LIST_DIR}/led_shift.pio)
 
