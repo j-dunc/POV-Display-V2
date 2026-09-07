@@ -1,14 +1,15 @@
 ; Parallel LED-driver shift-clock generator.
-; Shifts bits in OSR to out pins, taking exactly two SM cycles
-; Pulses clk as data is shifted (using sideset)
+; Shifts bits in OSR to out pins, taking exactly two SM cycles per bit
+; Note data is presented with CLK low, then CLK rises on the following instruction
+; to ensure shift register input is stable before CLK
 
 .program led_shift_lhs
 ; out pins are GPIO 0-10. 5 and 9 are don't cares as they are never claimed by pio setup
 .side_set 1
 
 .wrap_target
-    out pins, 11  side 1
-    nop           side 0
+    out pins, 11  side 0
+    nop           side 1
 .wrap
 
 .program led_shift_rhs
@@ -16,6 +17,6 @@
 .side_set 1
 
 .wrap_target
-    out pins, 9  side 1
-    nop          side 0
+    out pins, 9  side 0
+    nop          side 1
 .wrap
