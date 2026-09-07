@@ -63,8 +63,7 @@ All 4 SPI signals sit on the ESP32's dedicated IO_MUX path - supports 80 MHz.
 ## LED-to-chip wiring (per wing; LHS and RHS are identical patterns)
 
 
-Each chip has 16 output channels, numbered 0–15 in shift-register order
-(stage 0 = first bit shifted in). 9 chips per wing, numbered 0 (centre)
+Each chip has 16 output channels, numbered 0–15. After 16 shifts, first bit ends up at pin 15. 9 chips per wing, numbered 0 (centre)
 → 8 (edge) per the GPIO pin map above.
 
 
