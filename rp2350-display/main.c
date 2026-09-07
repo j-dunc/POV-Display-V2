@@ -1,8 +1,9 @@
+#include <stdio.h>
 #include "pico/stdlib.h"
 #include "board_init.h"
 #include "hall_sensor.h"
 
-#define DUMP_INTERVAL_MS 3000
+#define PRINT_INTERVAL_MS 500
 
 int main(void)
 {
@@ -11,7 +12,10 @@ int main(void)
     hall_sensor_init();
 
     while (true) {
-        hall_sensor_dump_log();
-        sleep_ms(DUMP_INTERVAL_MS);
+        printf("angle=%.1f deg period=%lu us rpm=%.1f\n",
+               hall_sensor_get_angle_deg(time_us_64()),
+               (unsigned long)hall_sensor_get_period_us(),
+               hall_sensor_get_rpm());
+        sleep_ms(PRINT_INTERVAL_MS);
     }
 }
