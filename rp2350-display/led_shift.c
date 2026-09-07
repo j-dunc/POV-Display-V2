@@ -69,7 +69,7 @@ static void init_rhs_sm(void) {
 static int init_dma_channel(PIO pio, uint sm) {
     int chan = dma_claim_unused_channel(true);
     dma_channel_config c = dma_channel_get_default_config(chan);
-    channel_config_set_transfer_data_size(&c, DMA_SIZE_32); // Move 32-bit words
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_16); // Move 16-bit words
     channel_config_set_read_increment(&c, true); // Walk forward through array
     channel_config_set_write_increment(&c, false); // Fixed destination (PIO FIFO)
     channel_config_set_dreq(&c, pio_get_dreq(pio, sm, true)); // Only transfer when space in PIO FIFO
@@ -85,7 +85,7 @@ void led_shift_init(void) {
     rhs_dma = init_dma_channel(rhs_pio, rhs_sm);
 }
 
-void led_shift_send(const uint32_t lhs_words[16], const uint32_t rhs_words[16]) {
+void led_shift_send(const uint16_t lhs_words[16], const uint16_t rhs_words[16]) {
     // Set DMA source as words array with length of 16 - send both LHS and RHS in parallel
     dma_channel_transfer_from_buffer_now(lhs_dma, lhs_words, 16);
     dma_channel_transfer_from_buffer_now(rhs_dma, rhs_words, 16);

@@ -17,7 +17,7 @@ int main(void)
 
     bool lhs_frame[LEDS_PER_WING][CHANNELS];
     bool rhs_frame[LEDS_PER_WING][CHANNELS];
-    uint32_t lhs_words[16], rhs_words[16];
+    uint16_t lhs_words[16], rhs_words[16];
 
     while (true) {
         for (int led = 0; led < LEDS_PER_WING; led++) {
