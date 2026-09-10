@@ -1,19 +1,23 @@
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "led_map.h"
 
 /*
 Frame buffer for each wing is the 48 LEDs in spatial order,
-the 3 channels of each, and whether each channel is on
+the 3 channels of each, and each channels brightness
 */
 
-void frame_buffer_clear(bool frame[LEDS_PER_WING][CHANNELS]);
-void frame_buffer_set(bool frame[LEDS_PER_WING][CHANNELS], int led, int channel, bool on);
+#define BCM_BITS 6
+#define BCM_MAX_LEVEL ((1 << BCM_BITS) - 1) // 63
 
-// Transforms spatial frame buffers to temporal word arrays for shifting out
-void frame_buffer_to_words(const bool lhs_frame[LEDS_PER_WING][CHANNELS],
-                            const bool rhs_frame[LEDS_PER_WING][CHANNELS],
+void frame_buffer_clear(uint8_t frame[LEDS_PER_WING][CHANNELS]);
+void frame_buffer_set(uint8_t frame[LEDS_PER_WING][CHANNELS], int led, int channel, uint8_t level);
+
+// Transforms spatial frame buffers to temporal word arrays for shifting out,
+// for a single BCM bit-plane (0 = LSB .. BCM_BITS-1 = MSB)
+void frame_buffer_to_words(const uint8_t lhs_frame[LEDS_PER_WING][CHANNELS],
+                            const uint8_t rhs_frame[LEDS_PER_WING][CHANNELS],
+                            int plane,
                             uint16_t lhs_words[16], uint16_t rhs_words[16]);
