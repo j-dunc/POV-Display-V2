@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "frame_buffer.h"
+
 /*
 Outer LED radius R = 95.107mm
 2mm LED pitch
@@ -12,14 +14,14 @@ Round to 298 for even number so wings are on opposite columns
 #define DEG_PER_COLUMN (360.0f / NUM_COLUMNS)
 
 /*
-Contains a 16-cycle word array for shifting per column
-Built before render so no build timing cost at render time
-Note these are different from LHS to RHS only because bit layout differs per wing
-Column-Frame mapping is identical between LHS and RHS because column identifies a fixed angular position
-Difference in wing positions is handled by render loop
+Contains a 16-cycle word array per BCM bit-plane, per column.
+Built before render so no build timing cost at render time.
+Note these are different from LHS to RHS only because bit layout differs per wing.
+Column-Frame mapping is identical between LHS and RHS because column identifies a fixed angular position.
+Difference in wing positions is handled by render loop.
 */
-extern uint16_t image_lhs_words[NUM_COLUMNS][16];
-extern uint16_t image_rhs_words[NUM_COLUMNS][16];
+extern uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS][16];
+extern uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS][16];
 
-// Build test image - red and green semicircles
+// Build test image - a colour wheel stepping through a fixed palette
 void image_source_build(void);
