@@ -23,5 +23,8 @@ Difference in wing positions is handled by render loop.
 extern uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS][16];
 extern uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS][16];
 
-// Build test image - a colour wheel stepping through a fixed palette
-void image_source_build(void);
+// Build test image - red brightness ramps 0 to BCM_MAX_LEVEL once per revolution
+void image_source_build_ramp(void);
+
+// Build test image - a colour wheel stepping through PALETTE in equal bands
+void image_source_build_palette(void);
