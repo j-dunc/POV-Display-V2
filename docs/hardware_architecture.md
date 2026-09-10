@@ -3,7 +3,7 @@ Spinning PCB persistence-of-vision display, two wings of RGB LEDs
 (LHS/RHS) forming a circular image as the board rotates (CW) on a BLDC motor.
 Wireless power to the spinning board. This document describes the
 schematic/PCB as designed — pin assignments, chip topology, and
-electrical facts.
+electrical facts. Note that the board and motor are controlled completely seperately.
 ## Chips
 
 - **RP2350A** — main render MCU.
@@ -19,6 +19,8 @@ electrical facts.
 - Wireless power receiver — rated 5V/2A; real deliverable current is
   considerably below that rating
 
+## Motor
+- Measured spin rate: **~900 RPM** (15 rev/s). 
 ## RP2350 pin map
 
 | GPIO | Function |
