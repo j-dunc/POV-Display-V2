@@ -12,12 +12,22 @@ uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS][16];
 
 // Fixed palette of full-scale colours, stepped through around the circle
 static const uint8_t PALETTE[][CHANNELS] = {
+    /*
     {BCM_MAX_LEVEL, 0, 0},             // red
     {0, BCM_MAX_LEVEL, 0},             // green
     {0, 0, BCM_MAX_LEVEL},             // blue
     {BCM_MAX_LEVEL, BCM_MAX_LEVEL, 0}, // yellow
     {0, BCM_MAX_LEVEL, BCM_MAX_LEVEL}, // cyan
     {BCM_MAX_LEVEL, 0, BCM_MAX_LEVEL}, // magenta
+    */
+
+    // Red with increasing brightnesses
+    {1, 0, 0},  // plane 0 (LSB)
+    {2, 0, 0},  // plane 1
+    {4, 0, 0},  // plane 2
+    {8, 0, 0},  // plane 3
+    {16, 0, 0}, // plane 4
+    {32, 0, 0}, // plane 5 (MSB)
 };
 #define PALETTE_SIZE (sizeof(PALETTE) / sizeof(PALETTE[0]))
 
