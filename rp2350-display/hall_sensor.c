@@ -1,6 +1,7 @@
 #include "hall_sensor.h"
 #include "pins.h"
 
+#include <math.h>
 #include <stdbool.h>
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
@@ -34,16 +35,20 @@ float hall_sensor_get_angle_deg(uint64_t now_us) {
     // Return -1 if triggers not measured yet
     if (!has_any_trigger || last_half_period_us == 0) return -1.0f;
 
+    uint64_t elapsed = now_us - last_edge_timestamp_us;
+
+    // Stop extrapolating from a stale timestamp if stalled / hall missed etc.
+    if (elapsed > (uint64_t)last_half_period_us * 4) return -1.0f;
+
     // HE_0 defines 0 degrees, HE_1 defines 180 degrees
     float last_edge_angle_deg = (last_edge_sensor == 0) ? 0.0f : 180.0f;
 
     // Assume constant angular velocity - calculated from half period
     // Use angular velocity, time elapsed, and starting angle to calculate current angle
-    uint64_t elapsed = now_us - last_edge_timestamp_us;
     float rate_deg_per_us = 180.0f / (float)last_half_period_us;
     float angle = last_edge_angle_deg + rate_deg_per_us * (float)elapsed;
-    while (angle >= 360.0f) angle -= 360.0f; // Ensure between 0 and 360
-    return angle;
+
+    return fmodf(angle, 360.0f); // Ensure between 0 and 360
 }
 
 uint32_t hall_sensor_get_period_us(void) {
