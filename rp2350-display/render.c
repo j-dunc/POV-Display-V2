@@ -16,6 +16,11 @@
 // Caps average current draw instead of a separate PWM/OE layer.
 #define MAX_DUTY_FRACTION 0.5f
 
+// Bench testing aid e.g. for logic analyser use
+// Simulates hall effect rpm, period, and angle measurements
+#define SIMULATE_HALL 1 // 1 = simulate, 0 = use hall effect sensors
+#define SIM_RPM 900.0f // matches measured rate
+
 // Which RHS column is currently on display, -1 if display is blanked
 static int last_col_rhs = -1;
 
@@ -23,9 +28,16 @@ static int last_col_rhs = -1;
 // Needed to busy wait in cycles instead of using hardware timer which has 1 us resolution - too small
 static uint32_t clk_hz;
 
+#if SIMULATE_HALL
+static uint64_t sim_start_us;
+#endif
+
 void render_init(void) {
     clk_hz = clock_get_hz(clk_sys);
-    image_source_build_rainbow();
+#if SIMULATE_HALL
+    sim_start_us = time_us_64();
+#endif
+    image_source_build_palette(); // holds each colour for ~50 columns - easier to scope-check a channel's BCM shape than the rainbow's constantly-shifting hue
 }
 
 /*
@@ -63,8 +75,16 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_us) 
 
 void render_update(void) {
     uint64_t now = time_us_64();
+
+#if SIMULATE_HALL
+    // Synthetic angle/period in place of the real hall sensors
+    uint32_t period_us = (uint32_t)(60000000.0f / SIM_RPM);
+    float angle = (float)((now - sim_start_us) % period_us) * (360.0f / (float)period_us);
+    float rpm = SIM_RPM;
+#else
     float angle = hall_sensor_get_angle_deg(now); // 0 deg = HE_0 = RHS wing tip
     float rpm = hall_sensor_get_rpm();
+#endif
 
     // Blank if invalid state - no angle measured or rpm too low
     if (angle < 0.0f || rpm < MIN_READABLE_RPM) {
@@ -83,7 +103,11 @@ void render_update(void) {
 
     // Start new column
     if (col_rhs != last_col_rhs) {
+#if SIMULATE_HALL
+        uint32_t column_dwell_us = period_us / NUM_COLUMNS;
+#else
         uint32_t column_dwell_us = hall_sensor_get_period_us() / NUM_COLUMNS; // Time for this column
+#endif
         show_column_bcm(col_lhs, col_rhs, column_dwell_us);
         last_col_rhs = col_rhs;
     }
