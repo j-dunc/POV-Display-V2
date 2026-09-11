@@ -9,8 +9,8 @@ Frame buffer for each wing is the 48 LEDs in spatial order,
 the 3 channels of each, and each channels brightness
 */
 
-#define BCM_BITS 8
-#define BCM_MAX_LEVEL ((1 << BCM_BITS) - 1) // 255
+#define BCM_BITS 6
+#define BCM_MAX_LEVEL ((1 << BCM_BITS) - 1) // 63
 
 void frame_buffer_clear(uint8_t frame[LEDS_PER_WING][CHANNELS]);
 void frame_buffer_set(uint8_t frame[LEDS_PER_WING][CHANNELS], int led, int channel, uint8_t level);
