@@ -59,7 +59,7 @@ void image_source_build_palette(void) {
         for (int led = 0; led < LEDS_PER_WING; led++) {
             for (int ch = 0; ch < CHANNELS; ch++) {
                 uint8_t level = PALETTE[band][ch];
-                if (ch == GREEN) level = (uint8_t)(level * GREEN_SCALE);
+                if (ch == GREEN) level = (uint8_t)(level * GREEN_SCALE + 0.5f); // round rather than truncate
                 frame_buffer_set(frame, led, ch, level);
             }
         }
@@ -83,7 +83,7 @@ static void hue_to_rgb(float hue_deg, uint8_t rgb[CHANNELS]) {
     // Ramping channel rises in an even sector, and falls in an odd sector
     float ramp_frac = (sector % 2 == 0) ? sector_frac : (1.0f - sector_frac);
 
-    uint8_t ramp = (uint8_t)(BCM_MAX_LEVEL * ramp_frac);
+    uint8_t ramp = (uint8_t)(BCM_MAX_LEVEL * ramp_frac + 0.5f); // round rather than truncate
 
     switch (sector) {
         case 0: rgb[RED] = BCM_MAX_LEVEL; rgb[GREEN] = ramp; rgb[BLUE] = 0; break; // red -> yellow
@@ -112,7 +112,7 @@ void image_source_build_rainbow(void) {
         for (int led = 0; led < LEDS_PER_WING; led++) {
             for (int ch = 0; ch < CHANNELS; ch++) {
                 uint8_t level = rgb[ch];
-                if (ch == GREEN) level = (uint8_t)(level * GREEN_SCALE); // Scale green to match brightnesses
+                if (ch == GREEN) level = (uint8_t)(level * GREEN_SCALE + 0.5f); // Scale green to match brightnesses, rounding rather than truncating
                 frame_buffer_set(frame, led, ch, level);
             }
         }
