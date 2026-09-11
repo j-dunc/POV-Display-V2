@@ -72,6 +72,7 @@ in calls rather than stack up these overheads across each plane, overrunning the
 static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_us) {
     uint64_t column_dwell_cycles = ((uint64_t)column_dwell_us * clk_hz) / 1000000;
     uint32_t cumulative_cycle = DWT->CYCCNT; // Absolute cycle count marking the end of the current plane's slot
+    uint32_t column_deadline_cycle = cumulative_cycle + (uint32_t)column_dwell_cycles; // absolute cycle the column must not run past
 
     for (int half = 0; half < 2; half++) {
         for (int i = 0; i < BCM_BITS; i++) {
@@ -99,7 +100,10 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_us) 
             // Measured from the actual on phase start (not the schedule), so this plane always
             // gets exactly on_cycles of real on-time regardless of any overrun
             // Self correcting for overruns occurs only in the off phases
-            wait_until_cycle(DWT->CYCCNT + on_cycles);
+            uint32_t on_target_cycle = DWT->CYCCNT + on_cycles;
+            // Clamp to the column deadline so columns never overrun, so columns are never skipped in a revolution
+            if ((int32_t)(on_target_cycle - column_deadline_cycle) > 0) on_target_cycle = column_deadline_cycle;
+            wait_until_cycle(on_target_cycle);
             gpio_put(PIN_OE, 1);
         }
     }
