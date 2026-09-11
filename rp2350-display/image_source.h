@@ -28,3 +28,6 @@ void image_source_build_ramp(void);
 
 // Build test image - a colour wheel stepping through PALETTE in equal bands
 void image_source_build_palette(void);
+
+// Build test image - a smooth rainbow, one full turn of hue around the circle
+void image_source_build_rainbow(void);
