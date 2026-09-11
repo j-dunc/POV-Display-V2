@@ -85,11 +85,15 @@ void led_shift_init(void) {
     rhs_dma = init_dma_channel(rhs_pio, rhs_sm);
 }
 
-void led_shift_load(const uint16_t lhs_words[16], const uint16_t rhs_words[16]) {
-    // Set DMA source as words array with length of 16 - send both LHS and RHS in parallel
+void led_shift_start(const uint16_t lhs_words[16], const uint16_t rhs_words[16]) {
+    // Set DMA source as words array with length of 16 - send both LHS and RHS in parallel.
+    // Returns immediately - the DMA/PIO shift itself runs in the background from here
     dma_channel_transfer_from_buffer_now(lhs_dma, lhs_words, 16);
     dma_channel_transfer_from_buffer_now(rhs_dma, rhs_words, 16);
-    // Busy-wait until DMA finished *CHANGE IN FUTURE IF CPU NEEDED*
+}
+
+void led_shift_finish(void) {
+    // Busy-wait until DMA finished
     dma_channel_wait_for_finish_blocking(lhs_dma);
     dma_channel_wait_for_finish_blocking(rhs_dma);
 
