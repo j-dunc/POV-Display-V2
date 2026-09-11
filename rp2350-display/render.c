@@ -8,6 +8,7 @@
 #include "pico/platform.h"
 #include "hardware/gpio.h"
 #include "hardware/clocks.h"
+#include "RP2350.h"
 
 // Blank below this RPM
 #define MIN_READABLE_RPM 100.0f
@@ -32,12 +33,27 @@ static uint32_t clk_hz;
 static uint64_t sim_start_us;
 #endif
 
+// Busy-waits until DWT->CYCCNT reaches (or has already passed) target_cycle
+static inline void wait_until_cycle(uint32_t target_cycle) {
+    while ((int32_t)(DWT->CYCCNT - target_cycle) < 0) {
+        tight_loop_contents();
+    }
+}
+
 void render_init(void) {
     clk_hz = clock_get_hz(clk_sys);
+
+    // Enable the DWT free-running cycle counter so show_column_bcm can measure
+    // its own real elapsed time including overheads
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; // Enable tracing
+    DWT->CYCCNT = 0; // Reset cycle counter
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk; // Enable cycle counter
+
 #if SIMULATE_HALL
     sim_start_us = time_us_64();
 #endif
-    image_source_build_palette(); // holds each colour for ~50 columns - easier to scope-check a channel's BCM shape than the rainbow's constantly-shifting hue
+
+    image_source_build_rainbow(); // holds each colour for ~50 columns - easier to scope-check a channel's BCM shape than the rainbow's constantly-shifting hue
 }
 
 /*
@@ -45,10 +61,15 @@ Shows all BCM_BITS planes of one column twice, each pass at half weight, in a
 mirrored (palindrome) plane order e.g. 5 4 3 2 1 0 0 1 2 3 4 5
 so the centroid is at the centre of the pixel
 Descending then ascending to split largest planes as much as possible
-Blocks for the whole column_dwell_us
+
+Each plane's on-time (on_cycles) is fixed and exact, since it's what sets displayed
+brightness.
+Each plane's off-time is worked out from DWT cycle counter, to self-correct for overhead
+in calls rather than stack up these overheads across each plane, overrunning the column end
 */
 static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_us) {
     uint64_t column_dwell_cycles = ((uint64_t)column_dwell_us * clk_hz) / 1000000;
+    uint32_t cumulative_cycle = DWT->CYCCNT; // Absolute cycle count marking the end of the current plane's slot
 
     for (int half = 0; half < 2; half++) {
         for (int i = 0; i < BCM_BITS; i++) {
@@ -57,17 +78,24 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_us) 
             uint32_t weight = 1u << plane; // plane's weight in the level, e.g. plane 5 = bit 5 = 32
             uint32_t slot_cycles = (uint32_t)((column_dwell_cycles * weight) / BCM_MAX_LEVEL / 2); // halved as shown twice for each column
             uint32_t on_cycles = (uint32_t)(slot_cycles * MAX_DUTY_FRACTION); // Scale all slots by the same factor keeps the ratio so only affects overall brightness
-            uint32_t off_cycles = slot_cycles - on_cycles;
+            cumulative_cycle += slot_cycles;
+            uint32_t on_start_cycle = cumulative_cycle - on_cycles; // when this plane's on-time should begin
 
             // OE already high here - start this plane's shift and let it run
             // in the background while we spend the blank time needed anyway for duty cycle
             led_shift_start(image_lhs_words[col_lhs][plane], image_rhs_words[col_rhs][plane]);
-            busy_wait_at_least_cycles(off_cycles);
-            led_shift_finish(); // blocks only if the shift is somehow not done yet
+
+            // Wait until this plane's scheduled on-time, based on real elapsed time
+            wait_until_cycle(on_start_cycle);
+
+            led_shift_finish(); // blocks only if the shift is somehow not done yet, so garbage isnt latched
             led_shift_latch();
 
             gpio_put(PIN_OE, 0);
-            busy_wait_at_least_cycles(on_cycles);
+            // Measured from the actual on phase start (not the schedule), so this plane always
+            // gets exactly on_cycles of real on-time regardless of any overrun
+            // Self correcting for overruns occurs only in the off phases
+            wait_until_cycle(DWT->CYCCNT + on_cycles);
             gpio_put(PIN_OE, 1);
         }
     }

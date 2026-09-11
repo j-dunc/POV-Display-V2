@@ -58,8 +58,8 @@ pico_enable_stdio_usb(rp2350-display 1)
 target_link_libraries(rp2350-display
         pico_stdlib
         hardware_pio
-        hardware_dma)
-
+        hardware_dma
+        cmsis_core)
 # Add the standard include files to the build
 target_include_directories(rp2350-display PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
