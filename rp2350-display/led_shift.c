@@ -85,7 +85,7 @@ void led_shift_init(void) {
     rhs_dma = init_dma_channel(rhs_pio, rhs_sm);
 }
 
-void led_shift_send(const uint16_t lhs_words[16], const uint16_t rhs_words[16]) {
+void led_shift_load(const uint16_t lhs_words[16], const uint16_t rhs_words[16]) {
     // Set DMA source as words array with length of 16 - send both LHS and RHS in parallel
     dma_channel_transfer_from_buffer_now(lhs_dma, lhs_words, 16);
     dma_channel_transfer_from_buffer_now(rhs_dma, rhs_words, 16);
@@ -99,8 +99,9 @@ void led_shift_send(const uint16_t lhs_words[16], const uint16_t rhs_words[16]) 
         tight_loop_contents();
     }
     __asm__ volatile ("nop\n nop\n nop\n nop\n nop\n nop\n"); // ~40ns delay to ensure all bits have been shifted
+}
 
-    // Latch all channels
+void led_shift_latch(void) {
     gpio_put(PIN_LE, 1);
     __asm__ volatile ("nop\n nop\n nop\n nop\n nop\n nop\n"); // ~40ns delay to ensure proper latching
     gpio_put(PIN_LE, 0);
