@@ -58,8 +58,10 @@ void render_init(void) {
 
 /*
 Shows all BCM_BITS planes of one column twice, each pass at half weight, in a
-mirrored (palindrome) plane order e.g. 5 4 3 2 1 0 0 1 2 3 4 5
+mirrored (palindrome) plane order e.g. 5 4 3 2 1 0 1 2 3 4 5
 so the centroid is at the centre of the pixel
+The exception is the weight-1 plane, which is shown once, full weight
+to ensure there is time for shift and latch overhead during off period
 Descending then ascending to split largest planes as much as possible
 
 Each plane's on-time (on_cycles) is fixed and exact, since it's what sets displayed
@@ -75,8 +77,10 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_us) 
         for (int i = 0; i < BCM_BITS; i++) {
             int plane = (half == 0) ? (BCM_BITS - 1 - i) : i; // descending then ascending
 
+            if (half == 1 && plane == 0) continue; // smallest plane already shown once, full weight, at the end of half 0 so do not repeat
+
             uint32_t weight = 1u << plane; // plane's weight in the level, e.g. plane 5 = bit 5 = 32
-            uint32_t slot_cycles = (uint32_t)((column_dwell_cycles * weight) / BCM_MAX_LEVEL / 2); // halved as shown twice for each column
+            uint32_t slot_cycles = (uint32_t)(column_dwell_cycles * weight / BCM_MAX_LEVEL / ((plane == 0) ? 1 : 2)); // weight according to plane weight, and half except for smallest plane
             uint32_t on_cycles = (uint32_t)(slot_cycles * MAX_DUTY_FRACTION); // Scale all slots by the same factor keeps the ratio so only affects overall brightness
             cumulative_cycle += slot_cycles;
             uint32_t on_start_cycle = cumulative_cycle - on_cycles; // when this plane's on-time should begin
