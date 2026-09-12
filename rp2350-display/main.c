@@ -7,7 +7,7 @@
 #include "led_map.h"
 #include "render.h"
 
-#define TEST 1 // 1 for true
+#define TEST 0 // 1 for true
 
 int main(void)
 {

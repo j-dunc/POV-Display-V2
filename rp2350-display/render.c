@@ -19,11 +19,14 @@
 
 // Bench testing aid e.g. for logic analyser use
 // Simulates hall effect rpm, period, and angle measurements
-#define SIMULATE_HALL 1 // 1 = simulate, 0 = use hall effect sensors
+#define SIMULATE_HALL 0 // 1 = simulate, 0 = use hall effect sensors
 #define SIM_RPM 900.0f // matches measured rate
 
 // Which RHS column is currently on display, -1 if display is blanked
 static int last_col_rhs = -1;
+
+// Absolute cycle at which the next column is scheduled to start
+static uint32_t next_column_start_cycle;
 
 // System clock frequency in Hz
 // Needed to busy wait in cycles instead of using hardware timer which has 1 us resolution - too small
@@ -68,11 +71,13 @@ Each plane's on-time (on_cycles) is fixed and exact, since it's what sets displa
 brightness.
 Each plane's off-time is worked out from DWT cycle counter, to self-correct for overhead
 in calls rather than stack up these overheads across each plane, overrunning the column end
+
+column_start_cycle is when this column was scheduled to start so any extra column overhead
+gets absorbed into off-time
 */
-static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_us) {
-    uint64_t column_dwell_cycles = ((uint64_t)column_dwell_us * clk_hz) / 1000000;
-    uint32_t cumulative_cycle = DWT->CYCCNT; // Absolute cycle count marking the end of the current plane's slot
-    uint32_t column_deadline_cycle = cumulative_cycle + (uint32_t)column_dwell_cycles; // absolute cycle the column must not run past
+static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_cycles, uint32_t column_start_cycle) {
+    uint32_t cumulative_cycle = column_start_cycle; // Absolute cycle count marking the end of the current plane's slot
+    uint32_t column_deadline_cycle = column_start_cycle + column_dwell_cycles; // absolute cycle the column must not run past
 
     for (int half = 0; half < 2; half++) {
         for (int i = 0; i < BCM_BITS; i++) {
@@ -81,7 +86,7 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_us) 
             if (half == 1 && plane == 0) continue; // smallest plane already shown once, full weight, at the end of half 0 so do not repeat
 
             uint32_t weight = 1u << plane; // plane's weight in the level, e.g. plane 5 = bit 5 = 32
-            uint32_t slot_cycles = (uint32_t)(column_dwell_cycles * weight / BCM_MAX_LEVEL / ((plane == 0) ? 1 : 2)); // weight according to plane weight, and half except for smallest plane
+            uint32_t slot_cycles = column_dwell_cycles * weight / BCM_MAX_LEVEL / ((plane == 0) ? 1 : 2); // weight according to plane weight, and half except for smallest plane
             uint32_t on_cycles = (uint32_t)(slot_cycles * MAX_DUTY_FRACTION); // Scale all slots by the same factor keeps the ratio so only affects overall brightness
             cumulative_cycle += slot_cycles;
             uint32_t on_start_cycle = cumulative_cycle - on_cycles; // when this plane's on-time should begin
@@ -140,11 +145,26 @@ void render_update(void) {
     // Start new column
     if (col_rhs != last_col_rhs) {
 #if SIMULATE_HALL
-        uint32_t column_dwell_us = period_us / NUM_COLUMNS;
+        uint32_t revolution_us = period_us;
 #else
-        uint32_t column_dwell_us = hall_sensor_get_period_us() / NUM_COLUMNS; // Time for this column
+        uint32_t revolution_us = hall_sensor_get_period_us();
 #endif
-        show_column_bcm(col_lhs, col_rhs, column_dwell_us);
+        // Divide into columns in cycles rather than whole microseconds
+        uint32_t revolution_cycles = (uint32_t)(((uint64_t)revolution_us * clk_hz) / 1000000); // Intermediate must cast to 64 bit to avoid overflow
+        uint32_t column_dwell_cycles = revolution_cycles / NUM_COLUMNS;
+
+        // Re-anchor the grid to the real shaft position if necessary
+        uint32_t now_cycle = DWT->CYCCNT;
+        int32_t schedule_error = (int32_t)(now_cycle - next_column_start_cycle);
+        if (last_col_rhs < 0 // Display blanked - invalid RPM or startup
+            || col_rhs < last_col_rhs  // Full revolution completed             
+            || schedule_error > (int32_t)column_dwell_cycles // Grid has fallen more than a column behind schedule             
+            || schedule_error < -(int32_t)column_dwell_cycles) { // Grid is ahead by more than a column
+            next_column_start_cycle = now_cycle;
+        }
+
+        show_column_bcm(col_lhs, col_rhs, column_dwell_cycles, next_column_start_cycle);
+        next_column_start_cycle += column_dwell_cycles; // fixed grid - don't re-read from the clock
         last_col_rhs = col_rhs;
     }
 }
