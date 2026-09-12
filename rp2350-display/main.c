@@ -6,13 +6,22 @@
 #include "hall_sensor.h"
 #include "led_map.h"
 #include "render.h"
+#include "spi_link.h"
 
 #define TEST 0 // 1 for true
+
+#define SPI_LINK_ECHO_TEST 1 // 1 for true
 
 int main(void)
 {
     stdio_init_all();
     board_init();
+
+#if SPI_LINK_ECHO_TEST
+    spi_link_init();
+    spi_link_echo_test();
+#endif
+
     led_shift_init();
     hall_sensor_init();
     build_led_map();

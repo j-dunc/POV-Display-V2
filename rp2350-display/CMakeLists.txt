@@ -43,7 +43,8 @@ add_executable(rp2350-display
     led_map.c
     hall_sensor.c
     image_source.c
-    render.c)
+    render.c
+    spi_link.c)
 
 pico_generate_pio_header(rp2350-display ${CMAKE_CURRENT_LIST_DIR}/led_shift.pio)
 
@@ -59,10 +60,12 @@ target_link_libraries(rp2350-display
         pico_stdlib
         hardware_pio
         hardware_dma
+        hardware_spi
         cmsis_core)
 # Add the standard include files to the build
 target_include_directories(rp2350-display PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/../shared
 )
 
 pico_add_extra_outputs(rp2350-display)
