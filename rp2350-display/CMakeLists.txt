@@ -61,6 +61,7 @@ target_link_libraries(rp2350-display
         hardware_pio
         hardware_dma
         hardware_spi
+        pico_multicore
         cmsis_core)
 # Add the standard include files to the build
 target_include_directories(rp2350-display PRIVATE

@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "pico/stdlib.h"
+#include "pico/multicore.h"
 #include "board_init.h"
 #include "led_shift.h"
 #include "hall_sensor.h"
@@ -10,17 +11,13 @@
 
 #define TEST 0 // 1 for true
 
-#define SPI_LINK_ECHO_TEST 1 // 1 for true
-
 int main(void)
 {
     stdio_init_all();
     board_init();
 
-#if SPI_LINK_ECHO_TEST
-    spi_link_init();
-    spi_link_echo_test();
-#endif
+    // Blocking loop on core 1, handling SPI communication with ESP32
+    multicore_launch_core1(spi_link_command_loop);
 
     led_shift_init();
     hall_sensor_init();

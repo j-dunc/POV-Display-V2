@@ -1,5 +1,8 @@
 #pragma once
 
+// Blank below this RPM - also the spinning threshold reported over CMD_GET_STATUS
+#define MIN_READABLE_RPM 100.0f
+
 /*
 Render loop: shows whichever precomputed image column matches the current
 shaft angle. Ties together hall_sensor (angle/rpm), image_source

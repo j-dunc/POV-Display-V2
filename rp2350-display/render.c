@@ -10,9 +10,6 @@
 #include "hardware/clocks.h"
 #include "RP2350.h"
 
-// Blank below this RPM
-#define MIN_READABLE_RPM 100.0f
-
 // Fraction of each plane's weighted on-time the LEDs are actually driven for.
 // Caps average current draw instead of a separate PWM/OE layer.
 #define MAX_DUTY_FRACTION 0.5f
