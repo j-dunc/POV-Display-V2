@@ -2,16 +2,8 @@
 
 #include <stdint.h>
 
+#include "frame_geometry.h"
 #include "frame_buffer.h"
-
-/*
-Outer LED radius R = 95.107mm
-2mm LED pitch
-So for approx square outer pixels, N = 2*pi*R / pitch = 298.79
-Round to 298 for even number so wings are on opposite columns
-*/
-#define NUM_COLUMNS 298
-#define DEG_PER_COLUMN (360.0f / NUM_COLUMNS)
 
 /*
 Contains a 16-cycle word array per BCM bit-plane, per column.

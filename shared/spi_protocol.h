@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "frame_geometry.h"
+
 // RP2350 <-> ESP32 SPI protocol definitions, shared by both
 
 // Each command is two transfers

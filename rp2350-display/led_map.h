@@ -2,14 +2,9 @@
 
 #include <stdint.h>
 
-#define LEDS_PER_WING 48
-#define CHANNELS 3
+#include "frame_geometry.h"
+
 #define LEDS_PER_ROOM 16
-
-#define RED 0
-#define GREEN 1
-#define BLUE 2
-
 
 // Store led position as chip,pin coordinates
 typedef struct {
