@@ -1,0 +1,36 @@
+menu "POV Display Configuration"
+
+    config ESP_WIFI_SSID
+        string "WiFi SSID"
+        default "POV-Display"
+        help
+            Name of the WiFi network the board broadcasts.
+
+    config ESP_WIFI_PASSWORD
+        string "WiFi Password"
+        default "povdisplay"
+        help
+            WPA2 password for the board's WiFi network (min 8 characters).
+
+    config ESP_WIFI_CHANNEL
+        int "WiFi Channel"
+        range 1 13
+        default 1
+        help
+            WiFi channel to broadcast on.
+
+    config ESP_MAX_STA_CONN
+        int "Maximal STA connections"
+        default 4
+        range 1 15
+        help
+            Maximum number of devices allowed to connect at once.
+
+    config MDNS_HOSTNAME
+        string "mDNS hostname"
+        default "pov"
+        help
+            The board is reachable at http://<hostname>.local instead of
+            its raw IP, on devices that support mDNS (most phones/PCs).
+
+endmenu
