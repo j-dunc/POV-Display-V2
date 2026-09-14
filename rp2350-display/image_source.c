@@ -123,3 +123,22 @@ void image_source_build_rainbow(void) {
         }
     }
 }
+
+// Sets one column from raw 0-255 RGB, e.g. pushed live over SPI
+void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]) {
+    uint8_t frame[LEDS_PER_WING][CHANNELS];
+    frame_buffer_clear(frame);
+
+    for (int led = 0; led < LEDS_PER_WING; led++) {
+        for (int ch = 0; ch < CHANNELS; ch++) {
+            uint8_t level = (uint8_t)(rgb[led][ch] * BCM_MAX_LEVEL / 255); // 0-255 -> 0-BCM_MAX_LEVEL
+            if (ch == GREEN) level = (uint8_t)(level * GREEN_SCALE + 0.5f); // round rather than truncate
+            frame_buffer_set(frame, led, ch, level);
+        }
+    }
+
+    // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
+    for (int plane = 0; plane < BCM_BITS; plane++) {
+        frame_buffer_to_words(frame, frame, plane, image_lhs_words[col][plane], image_rhs_words[col][plane]);
+    }
+}

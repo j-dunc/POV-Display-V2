@@ -15,3 +15,9 @@ bool spi_link_ping(void);
 
 // Sends CMD_GET_STATUS, fills out on success. Logs result.
 bool spi_link_get_status(spi_status_t *out);
+
+// Pushes one column of raw 0-255 RGB to the RP2350
+bool spi_link_push_column(uint16_t col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]);
+
+// Pushes an entire frame, one column at a time. Returns false if a push fails
+bool spi_link_push_frame(const uint8_t frame[NUM_COLUMNS][LEDS_PER_WING][CHANNELS]);

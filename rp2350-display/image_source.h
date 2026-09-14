@@ -23,3 +23,6 @@ void image_source_build_palette(void);
 
 // Build test image - a smooth rainbow, one full turn of hue around the circle
 void image_source_build_rainbow(void);
+
+// Sets one column from raw 0-255 RGB, e.g. pushed live over SPI from the ESP32
+void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]);

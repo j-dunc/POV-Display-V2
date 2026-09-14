@@ -12,7 +12,7 @@
 
 // Fraction of each plane's weighted on-time the LEDs are actually driven for.
 // Caps average current draw instead of a separate PWM/OE layer.
-#define MAX_DUTY_FRACTION 0.5f
+#define MAX_DUTY_FRACTION 0.2f
 
 // Bench testing aid e.g. for logic analyser use
 // Simulates hall effect rpm, period, and angle measurements
@@ -53,7 +53,7 @@ void render_init(void) {
     sim_start_us = time_us_64();
 #endif
 
-    image_source_build_rainbow(); // holds each colour for ~50 columns - easier to scope-check a channel's BCM shape than the rainbow's constantly-shifting hue
+    image_source_build_palette(); // holds each colour for ~50 columns - easier to scope-check a channel's BCM shape than the rainbow's constantly-shifting hue
 }
 
 /*

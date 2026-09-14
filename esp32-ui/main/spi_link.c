@@ -39,7 +39,7 @@ void spi_link_init(void) {
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
     };
-    ESP_ERROR_CHECK(spi_bus_initialize(SPI_LINK_HOST, &bus_cfg, SPI_DMA_DISABLED));
+    ESP_ERROR_CHECK(spi_bus_initialize(SPI_LINK_HOST, &bus_cfg, SPI_DMA_CH_AUTO)); // Must use DMA as columns are larger than FIFO
 
     // SPI device config and init
     spi_device_interface_config_t dev_cfg = {
@@ -130,6 +130,59 @@ bool spi_link_ping(void) {
         ESP_LOGW(TAG, "PING failed - got 0x%02x", resp);
     }
     return ok;
+}
+
+bool spi_link_push_column(uint16_t col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]) {
+    // Wait for RP2350 ready, then send the command byte (no rx)
+    if (!wait_ready()) {
+        ESP_LOGW(TAG, "RP2350 not ready for PUSH_COLUMN command");
+        return false;
+    }
+    uint8_t cmd = CMD_PUSH_COLUMN;
+    spi_transaction_t cmd_t = {
+        .length = 8,
+        .tx_buffer = &cmd,
+    };
+    esp_err_t err = spi_device_transmit(spi_dev, &cmd_t);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "PUSH_COLUMN command transaction failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    // Wait for RP2350 ready
+    if (!wait_ready()) {
+        ESP_LOGW(TAG, "RP2350 not ready for column %u payload", col);
+        return false;
+    }
+    // Build payload - column index then rgb data
+    WORD_ALIGNED_ATTR uint8_t payload[FRAME_COLUMN_PAYLOAD_SIZE]; // Must be word aligned for DMA
+    payload[0] = col & 0xFF; // Lower byte
+    payload[1] = (col >> 8) & 0xFF; // Upper byte
+    memcpy(&payload[2], rgb, LEDS_PER_WING * CHANNELS); 
+
+    spi_transaction_t payload_t = {
+        .length = sizeof(payload) * 8,
+        .tx_buffer = payload,
+    };
+    // Send transaction (no rx expected back) and check for errors
+    err = spi_device_transmit(spi_dev, &payload_t);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "column %u payload transaction failed: %s", col, esp_err_to_name(err));
+        return false;
+    }
+
+    return true;
+}
+
+bool spi_link_push_frame(const uint8_t frame[NUM_COLUMNS][LEDS_PER_WING][CHANNELS]) {
+    for (int col = 0; col < NUM_COLUMNS; col++) {
+        if (!spi_link_push_column(col, frame[col])) {
+            ESP_LOGE(TAG, "push_frame aborted at column %d", col);
+            return false;
+        }
+    }
+    ESP_LOGI(TAG, "pushed full frame (%d columns)", NUM_COLUMNS);
+    return true;
 }
 
 bool spi_link_get_status(spi_status_t *out) {
