@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POV Display</title>
+<style>
+    body { font-family: sans-serif; background: #222; color: #eee; padding: 16px; }
+    canvas { image-rendering: pixelated; border: 1px solid #555; background: #000; max-width: 100%; height: auto; }
+    .row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; margin-top: 16px; }
+    .col { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 400px; }
+    h3 { margin: 0 0 4px; font-size: 14px; font-weight: normal; color: #aaa; }
+    .controls { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+    .controls label { display: flex; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+
+<div class="controls">
+    <input type="file" id="fileInput" accept="image/*">
+    <label>Fit mode:
+        <select id="fitModeInput">
+            <option value="fit" selected>Fit (show whole image)</option>
+            <option value="crop">Crop (fill circle, may cut edges)</option>
+        </select>
+    </label>
+    <label>Background colour: <input type="color" id="bgColorInput" value="#000000"></label>
+    <button id="sendBtn" disabled>Send to display</button>
+    <span id="statusEl"></span>
+</div>
+
+<div class="row">
+    <div class="col">
+        <h3>Source (crop circle shown)</h3>
+        <canvas id="sourceCanvas" width="400" height="400"></canvas>
+    </div>
+    <div class="col">
+        <h3>Reconstructed</h3>
+        <canvas id="reconCanvas" width="400" height="400"></canvas>
+    </div>
+</div>
+
+<script>
+const NUM_COLUMNS = 298;   // angular samples per rev
+const LEDS_PER_WING = 48;  // radial samples
+
+const ROTATION_OFFSET_DEG = -90; // determined by trial
+const ROTATION_OFFSET_RAD = ROTATION_OFFSET_DEG * Math.PI / 180;
+
+const fileInput = document.getElementById('fileInput');
+const fitModeInput = document.getElementById('fitModeInput');
+const bgColorInput = document.getElementById('bgColorInput');
+const sendBtn = document.getElementById('sendBtn');
+const statusEl = document.getElementById('statusEl');
+const sourceCanvas = document.getElementById('sourceCanvas');
+const reconCanvas = document.getElementById('reconCanvas');
+
+let lastFrame = null; // most recently sampled frame, for the send button
+let lastImg = null; // most recently loaded image, so fit/colour changes can re-run without re-uploading
+
+// On file input, load image and process it
+fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const img = new Image();
+    img.onload = () => {
+        lastImg = img;
+        processImage(img);
+    };
+    img.src = URL.createObjectURL(file);
+});
+
+// Reprocess image on fit/bg changes
+fitModeInput.addEventListener('change', () => { if (lastImg) processImage(lastImg); });
+bgColorInput.addEventListener('input', () => { if (lastImg) processImage(lastImg); });
+
+// Send POST frame when send button clicked
+sendBtn.addEventListener('click', async () => {
+    if (!lastFrame) return;
+    statusEl.textContent = 'sending...';
+
+    try {
+        const res = await fetch('/frame', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: lastFrame,
+        });
+        statusEl.textContent = res.ok ? 'sent!' : `error: ${res.status} ${await res.text()}`;
+    } catch (err) {
+        statusEl.textContent = `failed: ${err.message}`;
+    }
+});
+
+function processImage(img) {
+    const srcCtx = sourceCanvas.getContext('2d');
+    const size = sourceCanvas.width;
+
+    // Fill with the chosen background colour first - shows through transparency
+    srcCtx.fillStyle = bgColorInput.value;
+    srcCtx.fillRect(0, 0, size, size);
+
+    let scale;
+    if (fitModeInput.value === 'crop') {
+        // Scale until image fits whole square, so some of original image cropped outside circle
+        scale = size / Math.min(img.width, img.height);
+    } else {
+        // Fit inside the circle
+        // Shrink so images diagonal = circle's diameter
+        scale = size / Math.sqrt(img.width ** 2 + img.height ** 2);
+    }
+    // Render source image
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    srcCtx.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
+
+    // Read image and sample to polar
+    const pixels = srcCtx.getImageData(0, 0, size, size);
+    const frame = sampleToPolarFrame(pixels, size, ROTATION_OFFSET_RAD);
+
+    // Add outline circle overlay
+    srcCtx.strokeStyle = '#0f0';
+    srcCtx.beginPath();
+    srcCtx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
+    srcCtx.stroke();
+
+    drawReconstruction(frame, size, ROTATION_OFFSET_RAD);
+
+    lastFrame = frame;
+    sendBtn.disabled = false;
+    statusEl.textContent = '';
+}
+
+/*
+For every (column, radius) pair, map back to an (x, y) in the source image
+and read its colour. Centre of the source square = polar origin
+its inscribed circle (radius = size/2) = the display's outer edge.
+*/
+function sampleToPolarFrame(pixels, size, rotationRad) {
+    const frame = new Uint8ClampedArray(NUM_COLUMNS * LEDS_PER_WING * 3);
+    const cx = size / 2; // centre coords
+    const cy = size / 2;
+    const maxRadiusPx = size / 2;
+
+    // Loop through columns and radius and match each (c,r) pixel to (x,y) in image
+    for (let c = 0; c < NUM_COLUMNS; c++) {
+        const angle = (c / NUM_COLUMNS) * 2 * Math.PI + rotationRad;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        for (let r = 0; r < LEDS_PER_WING; r++) {
+            const radiusPx = (r / (LEDS_PER_WING - 1)) * maxRadiusPx; // 0 maps to 0, 47 (outer led) maps to maxRadiusPx
+            const x = Math.round(cx + radiusPx * cos); // map angle,radius polar coords where polar origin is centre of square to x,y coords
+            const y = Math.round(cy - radiusPx * sin); // y mirrored to match spin direction
+
+            // calculate index into flat 1D byte array
+            // for x and y in image, and radius and column in frame
+            const srcIdx = (y * size + x) * 4; // skip y rows then x into row, note each pixel is 4 bytes as RGBA
+            const dstIdx = (c * LEDS_PER_WING + r) * 3; // skip c columns then r into column, note each pixel is 3 bytes as RGB
+
+            // Copy RGB from x,y pixel of source to column,radius of frame
+            frame[dstIdx]     = pixels.data[srcIdx];
+            frame[dstIdx + 1] = pixels.data[srcIdx + 1];
+            frame[dstIdx + 2] = pixels.data[srcIdx + 2];
+        }
+    }
+    return frame;
+}
+
+// Inverse of sampleToPolarFrame - for each output pixel (x,y), find its (column, radius) and look up the colour
+function drawReconstruction(frame, size, rotationRad) {
+    // Setup blank image
+    const ctx = reconCanvas.getContext('2d');
+    const imgData = ctx.createImageData(size, size);
+    const cx = size / 2;
+    const cy = size / 2;
+    const maxRadiusPx = size / 2;
+
+    // Loop through (x,y) pixels and find corresponding (c,r) pixel
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const dx = x - cx; // relative to centre
+            const dy = y - cy;
+            const radiusPx = Math.sqrt(dx ** 2 + dy ** 2); // distance from centre to pixel
+            const dstIdx = (y * size + x) * 4;
+
+            if (radiusPx > maxRadiusPx) {
+                imgData.data[dstIdx + 3] = 255; // outside display - leave black
+                continue;
+            }
+
+            // Map to angle
+            let angle = Math.atan2(-dy, dx) - rotationRad; // Note we invert the y mirror and angle offset
+            angle = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); // Ensure between 0 and 2pi
+
+            // Map angle and radius to column and led
+            const c = Math.round((angle / (2 * Math.PI)) * NUM_COLUMNS) % NUM_COLUMNS;
+            const r = Math.round((radiusPx / maxRadiusPx) * (LEDS_PER_WING - 1));
+
+            // Copy rgb from frame to preview image
+            const srcIdx = (c * LEDS_PER_WING + r) * 3;
+            imgData.data[dstIdx]     = frame[srcIdx];
+            imgData.data[dstIdx + 1] = frame[srcIdx + 1];
+            imgData.data[dstIdx + 2] = frame[srcIdx + 2];
+            imgData.data[dstIdx + 3] = 255;
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+}
+</script>
+</body>
+</html>
