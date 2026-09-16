@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "frame_geometry.h"
 #include "frame_buffer.h"
@@ -28,9 +29,9 @@ void image_source_build_rainbow(void);
 // Sets one column from raw 0-255 RGB, e.g. pushed live over SPI from the ESP32
 void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]);
 
-// Updates the live colour calibration (per-channel balance scale, gamma, and
-// radial falloff correction) and redraws what's on screen with it applied
-void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma);
+// Updates the live colour calibration (per-channel balance scale, gamma,
+// radial falloff correction, and ordered dithering) and redraws
+void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, bool dither_enabled);
 
 // Reads back the current live colour calibration
 void image_source_get_calibration(calibration_payload_t *out);

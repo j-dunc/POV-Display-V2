@@ -15,6 +15,7 @@ typedef struct {
     float scale[CHANNELS];
     float gamma;
     float radial_gamma;
+    bool dither_enabled;
 } color_calibration_t;
 
 // This is single source of truth for defaults - values revert to this on reset
@@ -22,11 +23,27 @@ static color_calibration_t calibration = {
     .scale = { 1.0f, 0.4f, 0.25f }, // R, G, B
     .gamma = 2.2f,
     .radial_gamma = 0.4f, // 0 = no radial correction
+    .dither_enabled = true,
 };
 
-// Converts one raw 0-255 channel value, at a given radial LED position, to a
-// 0-BCM_MAX_LEVEL level - applying gamma, channel, and radial balance
-static uint8_t apply_calibration(uint8_t raw_255, int channel, int led) {
+// 8x8 ordered (Bayer) dither matrix, values 0-63
+// Indexed by LED/column position
+// Spreads rounding errors evenly
+static const uint8_t BAYER_8X8[8][8] = {
+    { 0, 32,  8, 40,  2, 34, 10, 42},
+    {48, 16, 56, 24, 50, 18, 58, 26},
+    {12, 44,  4, 36, 14, 46,  6, 38},
+    {60, 28, 52, 20, 62, 30, 54, 22},
+    { 3, 35, 11, 43,  1, 33,  9, 41},
+    {51, 19, 59, 27, 49, 17, 57, 25},
+    {15, 47,  7, 39, 13, 45,  5, 37},
+    {63, 31, 55, 23, 61, 29, 53, 21},
+};
+
+// Converts one raw 0-255 channel value, at a given radial LED position and
+// column, to a 0-BCM_MAX_LEVEL level - applying gamma, channel, and radial balance
+// and bayer dithering
+static uint8_t apply_calibration(uint8_t raw_255, int channel, int led, int col) {
     // Apply gamma and channel scale
     float normalized = raw_255 / 255.0f;
     float corrected = powf(normalized, calibration.gamma) * calibration.scale[channel]; // Cout = Cin^Gamma
@@ -36,9 +53,22 @@ static uint8_t apply_calibration(uint8_t raw_255, int channel, int led) {
     float radial_norm = (float)(led + 1) / LEDS_PER_WING; // > 0 at centre, 1 at tip
     corrected *= powf(radial_norm, calibration.radial_gamma);
 
-    // Convert to BCM level
-    if (corrected > 1.0f) corrected = 1.0f; // clamp full scale at 1
-    return (uint8_t)(corrected * BCM_MAX_LEVEL + 0.5f); // round rather than truncate
+    // Ordered dithering:
+    // Instead of always rounding to nearest int, rounding threshold varies
+    // per LED (given by matrix) preventing banding
+    float level_f = corrected * BCM_MAX_LEVEL;
+    int base = (int)level_f; // truncate
+    float frac = level_f - base;
+    int level;
+    if (calibration.dither_enabled) {
+        float threshold = BAYER_8X8[led % 8][col % 8] / 64.0f;
+        level = (frac > threshold) ? base + 1 : base;
+    } else {
+        level = (frac >= 0.5f) ? base + 1 : base; // plain round-to-nearest
+    }
+    if (level > BCM_MAX_LEVEL) level = BCM_MAX_LEVEL; // clamp to max level
+
+    return (uint8_t)level;
 }
 
 // Raw (uncalibrated) copy of the last frame uploaded via image_source_set_column
@@ -46,12 +76,13 @@ static uint8_t apply_calibration(uint8_t raw_255, int channel, int led) {
 static uint8_t last_frame[NUM_COLUMNS][LEDS_PER_WING][CHANNELS];
 static bool has_uploaded_frame = false;
 
-void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma) {
+void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, bool dither_enabled) {
     calibration.scale[RED] = r_scale;
     calibration.scale[GREEN] = g_scale;
     calibration.scale[BLUE] = b_scale;
     calibration.gamma = gamma;
     calibration.radial_gamma = radial_gamma;
+    calibration.dither_enabled = dither_enabled;
 
     // Reapply to whatever image is currently on screen
     if (has_uploaded_frame) {
@@ -67,6 +98,7 @@ void image_source_get_calibration(calibration_payload_t *out) {
     out->b_scale = calibration.scale[BLUE];
     out->gamma = calibration.gamma;
     out->radial_gamma = calibration.radial_gamma;
+    out->dither_enabled = calibration.dither_enabled ? 1.0f : 0.0f;
 }
 
 // Stores the entire image, word array per BCM bit-plane per column
@@ -85,7 +117,7 @@ void image_source_build_ramp(void) {
         uint8_t level_255 = (uint8_t)(col * 255 / (NUM_COLUMNS - 1));
 
         for (int led = 0; led < LEDS_PER_WING; led++) {
-            frame_buffer_set(frame, led, RED, apply_calibration(level_255, RED, led));
+            frame_buffer_set(frame, led, RED, apply_calibration(level_255, RED, led, col));
         }
 
         // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
@@ -119,7 +151,7 @@ void image_source_build_palette(void) {
 
         for (int led = 0; led < LEDS_PER_WING; led++) {
             for (int ch = 0; ch < CHANNELS; ch++) {
-                frame_buffer_set(frame, led, ch, apply_calibration(PALETTE[band][ch], ch, led));
+                frame_buffer_set(frame, led, ch, apply_calibration(PALETTE[band][ch], ch, led, col));
             }
         }
 
@@ -170,7 +202,7 @@ void image_source_build_rainbow(void) {
 
         for (int led = 0; led < LEDS_PER_WING; led++) {
             for (int ch = 0; ch < CHANNELS; ch++) {
-                frame_buffer_set(frame, led, ch, apply_calibration(rgb[ch], ch, led));
+                frame_buffer_set(frame, led, ch, apply_calibration(rgb[ch], ch, led, col));
             }
         }
 
@@ -192,7 +224,7 @@ void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]
 
     for (int led = 0; led < LEDS_PER_WING; led++) {
         for (int ch = 0; ch < CHANNELS; ch++) {
-            frame_buffer_set(frame, led, ch, apply_calibration(rgb[led][ch], ch, led));
+            frame_buffer_set(frame, led, ch, apply_calibration(rgb[led][ch], ch, led, col));
         }
     }
 

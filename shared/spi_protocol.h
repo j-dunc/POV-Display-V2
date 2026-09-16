@@ -38,5 +38,6 @@ typedef struct {
     float gamma;
     float radial_gamma;
     float max_duty_fraction;
+    float dither_enabled; // 1.0 = on, 0.0 = off - float for uniform layout with the rest of this struct
 } calibration_payload_t;
 #define CALIBRATION_PAYLOAD_SIZE (sizeof(calibration_payload_t))

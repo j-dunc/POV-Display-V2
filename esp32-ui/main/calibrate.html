@@ -48,6 +48,12 @@
             Allow past 0.3 (risk of brownout)
         </label>
     </div>
+    <div class="control">
+        <label style="justify-content: flex-start; gap: 6px;">
+            <input type="checkbox" id="ditherInput" style="width: auto;">
+            Dithering (smooths gradients on scaled-down channels)
+        </label>
+    </div>
 </div>
 
 <p id="statusEl"></p>
@@ -61,6 +67,7 @@ const gammaInput = document.getElementById('gammaInput');
 const radialInput = document.getElementById('radialInput');
 const dutyInput = document.getElementById('dutyInput');
 const dutyUnlockInput = document.getElementById('dutyUnlockInput');
+const ditherInput = document.getElementById('ditherInput');
 const DUTY_SAFE_MAX = 0.3;
 const rVal = document.getElementById('rVal');
 const gVal = document.getElementById('gVal');
@@ -90,8 +97,8 @@ function scheduleSend() {
 
 // Send calibration values via POST endpoint
 async function sendCalibration() {
-    // 6 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction - matches calibration_payload_t
-    const buf = new ArrayBuffer(24);
+    // 7 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled - matches calibration_payload_t
+    const buf = new ArrayBuffer(28);
     const view = new DataView(buf);
     view.setFloat32(0, parseFloat(rInput.value), true);
     view.setFloat32(4, parseFloat(gInput.value), true);
@@ -99,6 +106,7 @@ async function sendCalibration() {
     view.setFloat32(12, parseFloat(gammaInput.value), true);
     view.setFloat32(16, parseFloat(radialInput.value), true);
     view.setFloat32(20, parseFloat(dutyInput.value), true);
+    view.setFloat32(24, ditherInput.checked ? 1.0 : 0.0, true);
 
     statusEl.textContent = 'sending...';
     try {
@@ -119,6 +127,8 @@ for (const input of [rInput, gInput, bInput, gammaInput, radialInput, dutyInput]
         scheduleSend();
     });
 }
+
+ditherInput.addEventListener('change', scheduleSend);
 
 // Ticking the box raises the slider's ceiling to 1. unticking clamps it back
 // down to the brownout-safe default, pulling the value down with it if needed
@@ -155,6 +165,7 @@ async function loadCalibration() {
             dutyInput.max = 1;
         }
         dutyInput.value = duty;
+        ditherInput.checked = view.getFloat32(24, true) !== 0;
         updateLabels();
         statusEl.textContent = '';
     } catch (err) {
