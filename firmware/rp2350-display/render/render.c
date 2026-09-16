@@ -182,7 +182,7 @@ void render_update(void) {
 
         // Only swap in a newly finished frame at a revolution boundary
         if (new_revolution) {
-            image_source_swap_pending_frame();
+            frame_buffer_swap_pending();
         }
 
         show_column_bcm(col_lhs, col_rhs, column_dwell_cycles, next_column_start_cycle);
