@@ -10,9 +10,10 @@
 // ESP32 sends CMD, waits for RP2350 ready line, then clocks reply back or data out
 
 // SPI Commands IDs
-#define CMD_PING        0x01
-#define CMD_GET_STATUS  0x02
-#define CMD_PUSH_COLUMN 0x03
+#define CMD_PING           0x01
+#define CMD_GET_STATUS     0x02
+#define CMD_PUSH_COLUMN    0x03
+#define CMD_SET_CALIBRATION 0x04
 
 // GET_STATUS response payload
 typedef struct {
@@ -24,3 +25,14 @@ typedef struct {
 // PUSH_COLUMN payload: 2-byte column index (little-endian), followed by
 // LEDS_PER_WING * CHANNELS bytes of raw 0-255 RGB
 #define FRAME_COLUMN_PAYLOAD_SIZE (2 + LEDS_PER_WING * CHANNELS)
+
+// SET_CALIBRATION payload: per-channel brightness scale , a shared gamma exponent, and a radial exponent
+// Applied to every colour before it's converted to BCM. No reply is sent.
+typedef struct {
+    float r_scale;
+    float g_scale;
+    float b_scale;
+    float gamma;
+    float radial_gamma;
+} calibration_payload_t;
+#define CALIBRATION_PAYLOAD_SIZE (sizeof(calibration_payload_t))

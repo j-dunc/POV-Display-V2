@@ -185,6 +185,43 @@ bool spi_link_push_frame(const uint8_t frame[NUM_COLUMNS][LEDS_PER_WING][CHANNEL
     return true;
 }
 
+bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma) {
+    // Wait for RP2350 ready, then send the command byte (no rx)
+    if (!wait_ready()) {
+        ESP_LOGW(TAG, "RP2350 not ready for SET_CALIBRATION command");
+        return false;
+    }
+    uint8_t cmd = CMD_SET_CALIBRATION;
+    spi_transaction_t cmd_t = {
+        .length = 8,
+        .tx_buffer = &cmd,
+    };
+    esp_err_t err = spi_device_transmit(spi_dev, &cmd_t);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SET_CALIBRATION command transaction failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    // Wait for RP2350 ready
+    if (!wait_ready()) {
+        ESP_LOGW(TAG, "RP2350 not ready for calibration payload");
+        return false;
+    }
+    WORD_ALIGNED_ATTR calibration_payload_t payload = { r_scale, g_scale, b_scale, gamma, radial_gamma }; // Must be word aligned for DMA
+    spi_transaction_t payload_t = {
+        .length = sizeof(payload) * 8,
+        .tx_buffer = &payload,
+    };
+    // Send transaction (no rx expected back) and check for errors
+    err = spi_device_transmit(spi_dev, &payload_t);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "calibration payload transaction failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    return true;
+}
+
 bool spi_link_get_status(spi_status_t *out) {
     uint8_t resp[sizeof(spi_status_t)]; // Byte array correctly sized
 
