@@ -18,6 +18,13 @@ static PIO rhs_pio = pio0;
 static uint rhs_sm;
 static int rhs_dma;
 
+// Drive low as GPIO before used by PIO to avoid floating
+static void init_output_low(uint pin) {
+    gpio_init(pin);
+    gpio_set_dir(pin, GPIO_OUT);
+    gpio_put(pin, 0);
+}
+
 static void init_lhs_sm(void) {
     // Load program into PIO memory and reserve SM
     uint offset = pio_add_program(lhs_pio, &led_shift_lhs_program);
@@ -79,6 +86,16 @@ static int init_dma_channel(PIO pio, uint sm) {
 }
 
 void led_shift_init(void) {
+    // Init all as low to avoid floating before used
+    for (int i = 0; i < 9; i++) {
+        init_output_low(LHS_DATA_PINS[i]);
+        init_output_low(RHS_DATA_PINS[i]);
+    }
+    init_output_low(PIN_LHS_CLK);
+    init_output_low(PIN_RHS_CLK);
+
+    init_output_low(PIN_LE); // Latch enable, only ever pulsed via led_shift_latch() from here on
+
     init_lhs_sm();
     init_rhs_sm();
     lhs_dma = init_dma_channel(lhs_pio, lhs_sm);

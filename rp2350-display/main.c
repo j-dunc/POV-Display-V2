@@ -2,7 +2,6 @@
 
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
-#include "board_init.h"
 #include "led_shift.h"
 #include "hall_sensor.h"
 #include "led_map.h"
@@ -12,7 +11,6 @@
 int main(void)
 {
     stdio_init_all();
-    board_init();
 
     // Blocking loop on core 1, handling SPI communication with ESP32
     multicore_launch_core1(spi_link_command_loop);

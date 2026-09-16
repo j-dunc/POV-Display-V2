@@ -26,7 +26,7 @@ float render_get_max_duty_fraction(void) {
 // Bench testing aid e.g. for logic analyser use
 // Simulates hall effect rpm, period, and angle measurements
 #define SIMULATE_HALL 0 // 1 = simulate, 0 = use hall effect sensors
-#define SIM_RPM 900.0f // matches measured rate
+#define SIM_RPM 1250.0f // matches max RPM
 
 // Which RHS column is currently on display, -1 if display is blanked
 static int last_col_rhs = -1;
@@ -50,6 +50,11 @@ static inline void wait_until_cycle(uint32_t target_cycle) {
 }
 
 void render_init(void) {
+    // Output enable is active LOW - start blanked until a column is actually shown
+    gpio_init(PIN_OE);
+    gpio_set_dir(PIN_OE, GPIO_OUT);
+    gpio_put(PIN_OE, 1);
+
     clk_hz = clock_get_hz(clk_sys);
 
     // Enable the DWT free-running cycle counter so show_column_bcm can measure

@@ -37,7 +37,6 @@ pico_sdk_init()
 
 add_executable(rp2350-display
     main.c
-    board_init.c
     led_shift.c
     frame_buffer.c
     led_map.c

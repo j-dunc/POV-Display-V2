@@ -26,6 +26,14 @@ static void hall_irq_handler(uint gpio, uint32_t events) {
 }
 
 void hall_sensor_init(void) {
+    // Sensors are open-collector, so need a pull-up to read a valid level
+    gpio_init(PIN_HE_0);
+    gpio_set_dir(PIN_HE_0, GPIO_IN);
+    gpio_pull_up(PIN_HE_0);
+    gpio_init(PIN_HE_1);
+    gpio_set_dir(PIN_HE_1, GPIO_IN);
+    gpio_pull_up(PIN_HE_1);
+
     // Register shared GPIO IRQ callback
     gpio_set_irq_enabled_with_callback(PIN_HE_0, GPIO_IRQ_EDGE_FALL, true, &hall_irq_handler);
     gpio_set_irq_enabled(PIN_HE_1, GPIO_IRQ_EDGE_FALL, true);
