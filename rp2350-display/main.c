@@ -9,8 +9,6 @@
 #include "render.h"
 #include "spi_link.h"
 
-#define TEST 0 // 1 for true
-
 int main(void)
 {
     stdio_init_all();
@@ -24,24 +22,7 @@ int main(void)
     build_led_map();
     render_init();
 
-#if TEST
-    float max_rpm = 0.0f;
-    uint64_t last_print_us = 0;
-#endif
-
     while (true) {
         render_update();
-
-#if TEST
-        // Print max RPM for bench testing
-        float rpm = hall_sensor_get_rpm();
-        if (rpm > max_rpm) max_rpm = rpm;
-
-        uint64_t now = time_us_64();
-        if (now - last_print_us >= 1000000) {
-            printf("Max RPM: %.1f\n", max_rpm);
-            last_print_us = now;
-        }
-#endif
     }
 }
