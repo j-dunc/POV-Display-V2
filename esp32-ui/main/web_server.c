@@ -130,7 +130,7 @@ static esp_err_t calibration_options_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// Accepts 5 little-endian float32s (r_scale, g_scale, b_scale, gamma, radial_gamma) and forwards to RP2350
+// Accepts 6 little-endian float32s (r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction) and forwards to RP2350
 static esp_err_t calibration_post_handler(httpd_req_t *req) {
     add_cors_headers(req);
 
@@ -155,7 +155,7 @@ static esp_err_t calibration_post_handler(httpd_req_t *req) {
     }
 
     // Send calibration values
-    if (!spi_link_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma)) {
+    if (!spi_link_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma, payload.max_duty_fraction)) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "push to RP2350 failed");
         return ESP_FAIL;
     }

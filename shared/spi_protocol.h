@@ -27,8 +27,10 @@ typedef struct {
 // LEDS_PER_WING * CHANNELS bytes of raw 0-255 RGB
 #define FRAME_COLUMN_PAYLOAD_SIZE (2 + LEDS_PER_WING * CHANNELS)
 
-// SET_CALIBRATION payload: per-channel brightness scale , a shared gamma exponent, and a radial exponent
-// Applied to every colour before it's converted to BCM. No reply is sent.
+// SET_CALIBRATION payload: per-channel brightness scale, a shared gamma exponent, a radial
+// exponent, and the overall max duty fraction
+// Colour fields are applied to every colour before it's converted to BCM; max_duty_fraction
+// scales every BCM plane's on-time. No reply is sent.
 // GET_CALIBRATION has no payload; it replies with the current values in this same layout
 typedef struct {
     float r_scale;
@@ -36,5 +38,6 @@ typedef struct {
     float b_scale;
     float gamma;
     float radial_gamma;
+    float max_duty_fraction;
 } calibration_payload_t;
 #define CALIBRATION_PAYLOAD_SIZE (sizeof(calibration_payload_t))

@@ -12,7 +12,16 @@
 
 // Fraction of each plane's weighted on-time the LEDs are actually driven for.
 // Caps average current draw instead of a separate PWM/OE layer.
-#define MAX_DUTY_FRACTION 0.2f
+// Tuned live via SPI with CMD_SET_CALIBRATION
+static float max_duty_fraction = 0.2f;
+
+void render_set_max_duty_fraction(float fraction) {
+    max_duty_fraction = fraction;
+}
+
+float render_get_max_duty_fraction(void) {
+    return max_duty_fraction;
+}
 
 // Bench testing aid e.g. for logic analyser use
 // Simulates hall effect rpm, period, and angle measurements
@@ -84,7 +93,7 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_cycl
 
             uint32_t weight = 1u << plane; // plane's weight in the level, e.g. plane 5 = bit 5 = 32
             uint32_t slot_cycles = column_dwell_cycles * weight / BCM_MAX_LEVEL / ((plane == 0) ? 1 : 2); // weight according to plane weight, and half except for smallest plane
-            uint32_t on_cycles = (uint32_t)(slot_cycles * MAX_DUTY_FRACTION); // Scale all slots by the same factor keeps the ratio so only affects overall brightness
+            uint32_t on_cycles = (uint32_t)(slot_cycles * max_duty_fraction); // Scale all slots by the same factor keeps the ratio so only affects overall brightness
             cumulative_cycle += slot_cycles;
             uint32_t on_start_cycle = cumulative_cycle - on_cycles; // when this plane's on-time should begin
 

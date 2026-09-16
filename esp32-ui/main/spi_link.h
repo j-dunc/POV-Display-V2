@@ -22,8 +22,8 @@ bool spi_link_push_column(uint16_t col, const uint8_t rgb[LEDS_PER_WING][CHANNEL
 // Pushes an entire frame, one column at a time. Returns false if a push fails
 bool spi_link_push_frame(const uint8_t frame[NUM_COLUMNS][LEDS_PER_WING][CHANNELS]);
 
-// Sends CMD_SET_CALIBRATION - update RP2350 calibration values and redraw image
-bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma);
+// Sends CMD_SET_CALIBRATION - update RP2350 colour calibration + max duty fraction, and redraw image
+bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, float max_duty_fraction);
 
 // Sends CMD_GET_CALIBRATION, fills out with the RP2350's current live calibration values
 bool spi_link_get_calibration(calibration_payload_t *out);

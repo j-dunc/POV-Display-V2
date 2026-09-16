@@ -185,7 +185,7 @@ bool spi_link_push_frame(const uint8_t frame[NUM_COLUMNS][LEDS_PER_WING][CHANNEL
     return true;
 }
 
-bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma) {
+bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, float max_duty_fraction) {
     // Wait for RP2350 ready, then send the command byte (no rx)
     if (!wait_ready()) {
         ESP_LOGW(TAG, "RP2350 not ready for SET_CALIBRATION command");
@@ -207,7 +207,7 @@ bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float
         ESP_LOGW(TAG, "RP2350 not ready for calibration payload");
         return false;
     }
-    WORD_ALIGNED_ATTR calibration_payload_t payload = { r_scale, g_scale, b_scale, gamma, radial_gamma }; // Must be word aligned for DMA
+    WORD_ALIGNED_ATTR calibration_payload_t payload = { r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction }; // Must be word aligned for DMA
     spi_transaction_t payload_t = {
         .length = sizeof(payload) * 8,
         .tx_buffer = &payload,

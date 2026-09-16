@@ -36,6 +36,14 @@
         <label>Radial falloff correction <span id="radialVal"></span></label>
         <input type="range" id="radialInput" min="0" max="1.5" step="0.05">
     </div>
+    <div class="control">
+        <label>Brightness (max duty) <span id="dutyVal"></span></label>
+        <input type="range" id="dutyInput" min="0" max="0.3" step="0.01">
+        <label style="justify-content: flex-start; gap: 6px;">
+            <input type="checkbox" id="dutyUnlockInput" style="width: auto;">
+            Allow past 0.3 (risk of brownout)
+        </label>
+    </div>
 </div>
 
 <p id="statusEl"></p>
@@ -47,11 +55,15 @@ const gInput = document.getElementById('gInput');
 const bInput = document.getElementById('bInput');
 const gammaInput = document.getElementById('gammaInput');
 const radialInput = document.getElementById('radialInput');
+const dutyInput = document.getElementById('dutyInput');
+const dutyUnlockInput = document.getElementById('dutyUnlockInput');
+const DUTY_SAFE_MAX = 0.3;
 const rVal = document.getElementById('rVal');
 const gVal = document.getElementById('gVal');
 const bVal = document.getElementById('bVal');
 const gammaVal = document.getElementById('gammaVal');
 const radialVal = document.getElementById('radialVal');
+const dutyVal = document.getElementById('dutyVal');
 const statusEl = document.getElementById('statusEl');
 
 let sendTimer = null;
@@ -62,6 +74,7 @@ function updateLabels() {
     bVal.textContent = bInput.value;
     gammaVal.textContent = gammaInput.value;
     radialVal.textContent = radialInput.value;
+    dutyVal.textContent = dutyInput.value;
 }
 
 // Debounce (so dragging doesn't flood SPI)
@@ -73,14 +86,15 @@ function scheduleSend() {
 
 // Send calibration values via POST endpoint
 async function sendCalibration() {
-    // 5 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma - matches calibration_payload_t
-    const buf = new ArrayBuffer(20);
+    // 6 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction - matches calibration_payload_t
+    const buf = new ArrayBuffer(24);
     const view = new DataView(buf);
     view.setFloat32(0, parseFloat(rInput.value), true);
     view.setFloat32(4, parseFloat(gInput.value), true);
     view.setFloat32(8, parseFloat(bInput.value), true);
     view.setFloat32(12, parseFloat(gammaInput.value), true);
     view.setFloat32(16, parseFloat(radialInput.value), true);
+    view.setFloat32(20, parseFloat(dutyInput.value), true);
 
     statusEl.textContent = 'sending...';
     try {
@@ -95,12 +109,25 @@ async function sendCalibration() {
     }
 }
 
-for (const input of [rInput, gInput, bInput, gammaInput, radialInput]) {
+for (const input of [rInput, gInput, bInput, gammaInput, radialInput, dutyInput]) {
     input.addEventListener('input', () => {
         updateLabels();
         scheduleSend();
     });
 }
+
+// Ticking the box raises the slider's ceiling to 1. unticking clamps it back
+// down to the brownout-safe default, pulling the value down with it if needed
+dutyUnlockInput.addEventListener('change', () => {
+    if (dutyUnlockInput.checked) {
+        dutyInput.max = 1;
+    } else {
+        dutyInput.max = DUTY_SAFE_MAX;
+        if (parseFloat(dutyInput.value) > DUTY_SAFE_MAX) dutyInput.value = DUTY_SAFE_MAX;
+    }
+    updateLabels();
+    scheduleSend();
+});
 
 // Loads the RP2350's current live calibration so sliders start in the right place
 async function loadCalibration() {
@@ -118,6 +145,12 @@ async function loadCalibration() {
         bInput.value = view.getFloat32(8, true);
         gammaInput.value = view.getFloat32(12, true);
         radialInput.value = view.getFloat32(16, true);
+        const duty = view.getFloat32(20, true);
+        if (duty > DUTY_SAFE_MAX) {
+            dutyUnlockInput.checked = true;
+            dutyInput.max = 1;
+        }
+        dutyInput.value = duty;
         updateLabels();
         statusEl.textContent = '';
     } catch (err) {

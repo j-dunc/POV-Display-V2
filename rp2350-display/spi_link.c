@@ -130,12 +130,14 @@ void spi_link_command_loop(void) {
                 gpio_put(PIN_RP_ESP32_GPIO, 0);
 
                 image_source_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma);
+                render_set_max_duty_fraction(payload.max_duty_fraction);
                 break;
             }
 
             case CMD_GET_CALIBRATION: {
                 calibration_payload_t payload;
                 image_source_get_calibration(&payload);
+                payload.max_duty_fraction = render_get_max_duty_fraction();
                 gpio_put(PIN_RP_ESP32_GPIO, 1); // ready with the reply
                 if (!spi_write_with_timeout((uint8_t *)&payload, sizeof(payload))) continue;
                 gpio_put(PIN_RP_ESP32_GPIO, 0);
