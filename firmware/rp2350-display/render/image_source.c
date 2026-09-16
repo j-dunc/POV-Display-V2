@@ -1,5 +1,6 @@
 #include "image_source.h"
 #include "frame_buffer.h"
+#include "test_patterns.h"
 
 #include <math.h>
 #include <string.h>
@@ -80,7 +81,7 @@ void rebuild_calibration(void) {
 // Converts one raw 0-255 channel value, at a given radial LED position and
 // column, to a 0-bcm_max_level level - applying gamma, channel, and radial balance
 // and bayer dithering
-static uint8_t apply_calibration(uint8_t raw_255, int channel, int led, int col) {
+uint8_t image_source_apply_calibration(uint8_t raw_255, int channel, int led, int col) {
     // Gamma, channel scale and radial gamma are all accounted for in these two lookups
     float level_f = gamma_lut[raw_255] * channel_gain[channel][led];
 
@@ -160,130 +161,16 @@ int image_source_get_bcm_bits(void) {
     return calibration.bcm_bits;
 }
 
-// Test pattern: one channel ramps 0 to full scale once per revolution
-// Reveals banding/clipping
-// Used to tune channel scale and gamma
-void image_source_build_channel_ramp(int channel) {
-
-    // Column content is a function of angle only, not which wing so frame same for each wing
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
-
-    for (int col = 0; col < NUM_COLUMNS; col++) {
-        frame_buffer_clear(frame);
-
-        uint8_t level_255 = (uint8_t)(col * 255 / (NUM_COLUMNS - 1));
-
-        for (int led = 0; led < LEDS_PER_WING; led++) {
-            frame_buffer_set(frame, led, channel, apply_calibration(level_255, channel, led, col));
-        }
-
-        // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, frame, calibration.bcm_bits);
-    }
-}
-
-// Test pattern: all three channels ramp together, 0 to full scale once per revolution
-// Should be black-gray-white gradient revealing white-point errors
-// Used to tune channel scales
-void image_source_build_gray_ramp(void) {
-
-    // Column content is a function of angle only, not which wing so frame same for each wing
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
-
-    for (int col = 0; col < NUM_COLUMNS; col++) {
-        frame_buffer_clear(frame);
-
-        uint8_t level_255 = (uint8_t)(col * 255 / (NUM_COLUMNS - 1));
-
-        for (int led = 0; led < LEDS_PER_WING; led++) {
-            for (int ch = 0; ch < CHANNELS; ch++) {
-                frame_buffer_set(frame, led, ch, apply_calibration(level_255, ch, led, col));
-            }
-        }
-
-        // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, frame, calibration.bcm_bits);
-    }
-}
-
-// Test pattern: flat full-scale white, same at every column and every LED.
-// Isolated radial falloff correction
-// Also can be used to find max safe duty fraction before brownout
-void image_source_build_radial_white(void) {
-    // Column content same for each column so build once
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
-    frame_buffer_clear(frame);
-    for (int led = 0; led < LEDS_PER_WING; led++) {
-        for (int ch = 0; ch < CHANNELS; ch++) {
-            frame_buffer_set(frame, led, ch, apply_calibration(255, ch, led, 0));
-        }
-    }
-
-    for (int col = 0; col < NUM_COLUMNS; col++) {
-        // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, frame, calibration.bcm_bits);
-    }
-}
-
-// Converts a hue in [0, 360) to full-saturation, full-value RGB at 0-255 scale.
-// The hue wheel is divided into 6 sectors of 60 degrees each
-// In each sector, one channel is max, one is zero, and one ramps linearly (up or down)
-static void hue_to_rgb(float hue_deg, uint8_t rgb[CHANNELS]) {
-
-    // Which 60-degree sector we're in (0-5), and how far through it (0-1)
-    int sector = (int)(hue_deg / 60.0f);
-    float sector_frac = (hue_deg / 60.0f) - sector;
-
-    // Ramping channel rises in an even sector, and falls in an odd sector
-    float ramp_frac = (sector % 2 == 0) ? sector_frac : (1.0f - sector_frac);
-
-    uint8_t ramp = (uint8_t)(255 * ramp_frac + 0.5f); // round rather than truncate
-
-    switch (sector) {
-        case 0: rgb[RED] = 255; rgb[GREEN] = ramp; rgb[BLUE] = 0; break; // red -> yellow
-        case 1: rgb[RED] = ramp; rgb[GREEN] = 255; rgb[BLUE] = 0; break; // yellow -> green
-        case 2: rgb[RED] = 0; rgb[GREEN] = 255; rgb[BLUE] = ramp; break; // green -> cyan
-        case 3: rgb[RED] = 0; rgb[GREEN] = ramp; rgb[BLUE] = 255; break; // cyan -> blue
-        case 4: rgb[RED] = ramp; rgb[GREEN] = 0; rgb[BLUE] = 255; break; // blue -> magenta
-        default: rgb[RED] = 255; rgb[GREEN] = 0; rgb[BLUE] = ramp; break; // magenta -> red
-    }
-}
-
-// Smooth rainbow test pattern: hue sweeps 0-360 degrees once per revolution
-void image_source_build_rainbow(void) {
-
-    // Column content is a function of angle only, not which wing so frame same for each wing
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
-
-    // Draw each column at the determined hsv converted to rgb
-    for (int col = 0; col < NUM_COLUMNS; col++) {
-        frame_buffer_clear(frame);
-
-        float hue = 360.0f * col / NUM_COLUMNS;
-        uint8_t rgb[CHANNELS];
-        hue_to_rgb(hue, rgb);
-
-        for (int led = 0; led < LEDS_PER_WING; led++) {
-            for (int ch = 0; ch < CHANNELS; ch++) {
-                frame_buffer_set(frame, led, ch, apply_calibration(rgb[ch], ch, led, col));
-            }
-        }
-
-        // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, frame, calibration.bcm_bits);
-    }
-}
-
-// Calls the build_* function for one TEST_PATTERN_* id, and records
+// Calls the test_pattern_build_* function for one TEST_PATTERN_* id, and records
 // it as the current display source so a later calibration change rebuilds it
 void image_source_show_test_pattern(uint8_t pattern_id) {
     switch (pattern_id) {
-        case TEST_PATTERN_RED_RAMP:     image_source_build_channel_ramp(RED); break;
-        case TEST_PATTERN_GREEN_RAMP:   image_source_build_channel_ramp(GREEN); break;
-        case TEST_PATTERN_BLUE_RAMP:    image_source_build_channel_ramp(BLUE); break;
-        case TEST_PATTERN_GRAY_RAMP:    image_source_build_gray_ramp(); break;
-        case TEST_PATTERN_RADIAL_WHITE: image_source_build_radial_white(); break;
-        case TEST_PATTERN_RAINBOW:      image_source_build_rainbow(); break;
+        case TEST_PATTERN_RED_RAMP:     test_pattern_build_channel_ramp(RED); break;
+        case TEST_PATTERN_GREEN_RAMP:   test_pattern_build_channel_ramp(GREEN); break;
+        case TEST_PATTERN_BLUE_RAMP:    test_pattern_build_channel_ramp(BLUE); break;
+        case TEST_PATTERN_GRAY_RAMP:    test_pattern_build_gray_ramp(); break;
+        case TEST_PATTERN_RADIAL_WHITE: test_pattern_build_radial_white(); break;
+        case TEST_PATTERN_RAINBOW:      test_pattern_build_rainbow(); break;
         default: return; // unknown pattern id, ignore - leave current_mode untouched
     }
     current_mode = IMAGE_SOURCE_TEST_PATTERN;
@@ -301,7 +188,7 @@ void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]
 
     for (int led = 0; led < LEDS_PER_WING; led++) {
         for (int ch = 0; ch < CHANNELS; ch++) {
-            frame_buffer_set(frame, led, ch, apply_calibration(rgb[led][ch], ch, led, col));
+            frame_buffer_set(frame, led, ch, image_source_apply_calibration(rgb[led][ch], ch, led, col));
         }
     }
 

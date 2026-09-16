@@ -43,6 +43,7 @@ add_executable(rp2350-display
     render/frame_buffer.c
     render/led_map.c
     render/image_source.c
+    render/test_patterns.c
     render/render.c)
 
 pico_generate_pio_header(rp2350-display ${CMAKE_CURRENT_LIST_DIR}/drivers/led_shift.pio)

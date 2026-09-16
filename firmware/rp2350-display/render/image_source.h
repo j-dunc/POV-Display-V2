@@ -11,17 +11,9 @@
 // Reduces per frame computational cost
 void rebuild_calibration(void);
 
-// Test pattern - one channel (RED/GREEN/BLUE) ramps 0 to full scale
-void image_source_build_channel_ramp(int channel);
-
-// Test pattern - all channels ramp together 0 to full scale
-void image_source_build_gray_ramp(void);
-
-// Test pattern - flat full-scale white everywhere
-void image_source_build_radial_white(void);
-
-// Test pattern - a smooth rainbow, one full turn of hue around the circle
-void image_source_build_rainbow(void);
+// Converts one raw 0-255 channel value, at a given radial LED position and column, to
+// a 0-bcm_max_level level - applying gamma, channel, and radial balance and bayer dithering
+uint8_t image_source_apply_calibration(uint8_t raw_255, int channel, int led, int col);
 
 // Displays one TEST_PATTERN_* id
 void image_source_show_test_pattern(uint8_t pattern_id);
