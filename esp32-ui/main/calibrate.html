@@ -14,6 +14,10 @@
     #result { background: #000; border: 1px solid #555; padding: 8px 12px; font-family: monospace; white-space: pre; margin-top: 16px; }
     #statusBar { font-size: 13px; color: #aaa; margin-bottom: 16px; }
     #statusBar.offline { color: #f66; }
+    #testPatterns { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+    .testPatternItem { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .testPatternItem canvas { border: 1px solid #555; border-radius: 50%; background: #000; }
+    .testPatternItem button { font-size: 12px; padding: 4px 8px; }
 </style>
 </head>
 <body>
@@ -51,12 +55,41 @@
     <div class="control">
         <label style="justify-content: flex-start; gap: 6px;">
             <input type="checkbox" id="ditherInput" style="width: auto;">
-            Dithering (smooths gradients on scaled-down channels)
+            Dithering 
         </label>
     </div>
     <div class="control">
         <label>BCM bit depth <span id="bcmVal"></span></label>
         <input type="range" id="bcmInput" min="1" max="8" step="1">
+    </div>
+    <div class="control">
+        <label>Test patterns (previews show the uncalibrated target to compare against)</label>
+        <div id="testPatterns">
+            <div class="testPatternItem">
+                <canvas id="previewRed" width="90" height="90"></canvas>
+                <button data-pattern="0">Red ramp</button>
+            </div>
+            <div class="testPatternItem">
+                <canvas id="previewGreen" width="90" height="90"></canvas>
+                <button data-pattern="1">Green ramp</button>
+            </div>
+            <div class="testPatternItem">
+                <canvas id="previewBlue" width="90" height="90"></canvas>
+                <button data-pattern="2">Blue ramp</button>
+            </div>
+            <div class="testPatternItem">
+                <canvas id="previewGray" width="90" height="90"></canvas>
+                <button data-pattern="3">Gray ramp</button>
+            </div>
+            <div class="testPatternItem">
+                <canvas id="previewRadial" width="90" height="90"></canvas>
+                <button data-pattern="4">Radial white</button>
+            </div>
+            <div class="testPatternItem">
+                <canvas id="previewRainbow" width="90" height="90"></canvas>
+                <button data-pattern="5">Rainbow</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -82,6 +115,105 @@ const gammaVal = document.getElementById('gammaVal');
 const radialVal = document.getElementById('radialVal');
 const dutyVal = document.getElementById('dutyVal');
 const statusEl = document.getElementById('statusEl');
+
+// Mirrors hue_to_rgb in image_source.c
+function hueToRgb255(hueDeg) {
+    const sector = Math.floor(hueDeg / 60);
+    const sectorFrac = (hueDeg / 60) - sector;
+    const rampFrac = (sector % 2 === 0) ? sectorFrac : (1 - sectorFrac);
+    const ramp = Math.round(255 * rampFrac);
+    switch (sector) {
+        case 0: return [255, ramp, 0];
+        case 1: return [ramp, 255, 0];
+        case 2: return [0, 255, ramp];
+        case 3: return [0, ramp, 255];
+        case 4: return [ramp, 0, 255];
+        default: return [255, 0, ramp];
+    }
+}
+
+// Same rotation reference as converter.html
+// This is the offset of column 0 from canvas angle 0
+const ROTATION_OFFSET_RAD = -90 * Math.PI / 180;
+
+// Draws a small polar preview of test pattern
+// Raw colours so this is source of truth to calibrate against
+function renderPreview(canvas, patternType) {
+    const ctx = canvas.getContext('2d');
+    const size = canvas.width;
+    const cx = size / 2, cy = size / 2;
+    const maxR = size / 2;
+    const imgData = ctx.createImageData(size, size);
+
+    // Loop through pixels in square canvas
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const idx = (y * size + x) * 4; // Byte offset into flat imgData.data array (RGBA)
+            const dx = x - cx, dy = y - cy;
+            const r = Math.sqrt(dx * dx + dy * dy);
+            // Calculate distance from centre - if outside circle, set alpha to max
+            if (r > maxR) { imgData.data[idx + 3] = 255; continue; }
+
+            // Mirrors converter.html's drawReconstruction: y negated to match
+            // spin direction, then remove the rotation offset before normalising
+            let angle = Math.atan2(-dy, dx) - ROTATION_OFFSET_RAD;
+            angle = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            const angleFrac = angle / (2 * Math.PI);
+
+            // Draw ramp pattern unless solid pattern
+            const raw255 = patternType === 'solid' ? 255 : Math.round(angleFrac * 255);
+
+            // Set RGB
+            let rgb;
+            if (patternType === 'red') rgb = [raw255, 0, 0];
+            else if (patternType === 'green') rgb = [0, raw255, 0];
+            else if (patternType === 'blue') rgb = [0, 0, raw255];
+            else if (patternType === 'rainbow') rgb = hueToRgb255(angleFrac * 360);
+            else rgb = [raw255, raw255, raw255]; // gray or solid
+
+            // Set Pixels
+            imgData.data[idx] = rgb[0];
+            imgData.data[idx + 1] = rgb[1];
+            imgData.data[idx + 2] = rgb[2];
+            imgData.data[idx + 3] = 255;
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+}
+
+const PREVIEW_CANVASES = {
+    red: document.getElementById('previewRed'),
+    green: document.getElementById('previewGreen'),
+    blue: document.getElementById('previewBlue'),
+    gray: document.getElementById('previewGray'),
+    solid: document.getElementById('previewRadial'),
+    rainbow: document.getElementById('previewRainbow'),
+};
+
+function renderAllPreviews() {
+    for (const [type, canvas] of Object.entries(PREVIEW_CANVASES)) {
+        renderPreview(canvas, type);
+    }
+}
+
+// Sends one TEST_PATTERN_* id to the RP2350 to display it
+async function sendTestPattern(patternId) {
+    statusEl.textContent = 'sending...';
+    try {
+        const res = await fetch('/test-pattern', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: new Uint8Array([patternId]),
+        });
+        statusEl.textContent = res.ok ? '' : `error: ${res.status} ${await res.text()}`;
+    } catch (err) {
+        statusEl.textContent = `failed: ${err.message}`;
+    }
+}
+
+document.querySelectorAll('#testPatterns button').forEach((btn) => {
+    btn.addEventListener('click', () => sendTestPattern(parseInt(btn.dataset.pattern, 10)));
+});
 
 let sendTimer = null;
 
@@ -183,6 +315,7 @@ async function loadCalibration() {
 }
 
 loadCalibration();
+renderAllPreviews();
 
 </script>
 <script src="/status.js"></script>

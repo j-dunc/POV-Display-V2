@@ -22,11 +22,11 @@ typedef struct {
 
 // This is single source of truth for defaults - values revert to this on reset
 static color_calibration_t calibration = {
-    .scale = { 1.0f, 0.4f, 0.25f }, // R, G, B
-    .gamma = 2.2f,
-    .radial_gamma = 0.4f, // 0 = no radial correction
+    .scale = { 1.0f, 0.5f, 0.3f }, // R, G, B
+    .gamma = 3.5f,
+    .radial_gamma = 0.6f, // 0 = no radial correction
     .dither_enabled = true,
-    .bcm_bits = BCM_BITS_MAX,
+    .bcm_bits = 8,
 };
 
 // 8x8 ordered (Bayer) dither matrix, values 0-63
@@ -79,7 +79,17 @@ static uint8_t apply_calibration(uint8_t raw_255, int channel, int led, int col)
 // Raw (uncalibrated) copy of the last frame uploaded via image_source_set_column
 // Kept so calibration changes are applied to raw frame
 static uint8_t last_frame[NUM_COLUMNS][LEDS_PER_WING][CHANNELS];
-static bool has_uploaded_frame = false;
+
+// Tracks what's actually currently on screen
+// So calibration changes know what to rebuild
+typedef enum {
+    IMAGE_SOURCE_NONE, // still blank - nothing built yet
+    IMAGE_SOURCE_UPLOADED_FRAME,
+    IMAGE_SOURCE_TEST_PATTERN,
+} image_source_mode_t;
+
+static image_source_mode_t current_mode = IMAGE_SOURCE_NONE;
+static uint8_t current_test_pattern_id = 0;
 
 void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, bool dither_enabled, int bcm_bits) {
     calibration.scale[RED] = r_scale;
@@ -92,11 +102,18 @@ void image_source_set_calibration(float r_scale, float g_scale, float b_scale, f
     if (bcm_bits > BCM_BITS_MAX) bcm_bits = BCM_BITS_MAX;
     calibration.bcm_bits = bcm_bits;
 
-    // Reapply to whatever image is currently on screen
-    if (has_uploaded_frame) {
-        for (int col = 0; col < NUM_COLUMNS; col++) {
-            image_source_set_column(col, last_frame[col]);
-        }
+    // Reapply to whatever is actually currently on screen
+    switch (current_mode) {
+        case IMAGE_SOURCE_UPLOADED_FRAME:
+            for (int col = 0; col < NUM_COLUMNS; col++) {
+                image_source_set_column(col, last_frame[col]);
+            }
+            break;
+        case IMAGE_SOURCE_TEST_PATTERN:
+            image_source_show_test_pattern(current_test_pattern_id);
+            break;
+        case IMAGE_SOURCE_NONE:
+            break; // still blank
     }
 }
 
@@ -120,7 +137,10 @@ uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
 uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
 
 
-void image_source_build_ramp(void) {
+// Test pattern: one channel ramps 0 to full scale once per revolution
+// Reveals banding/clipping
+// Used to tune channel scale and gamma
+void image_source_build_channel_ramp(int channel) {
 
     // Column content is a function of angle only, not which wing so frame same for each wing
     uint8_t frame[LEDS_PER_WING][CHANNELS];
@@ -131,7 +151,7 @@ void image_source_build_ramp(void) {
         uint8_t level_255 = (uint8_t)(col * 255 / (NUM_COLUMNS - 1));
 
         for (int led = 0; led < LEDS_PER_WING; led++) {
-            frame_buffer_set(frame, led, RED, apply_calibration(level_255, RED, led, col));
+            frame_buffer_set(frame, led, channel, apply_calibration(level_255, channel, led, col));
         }
 
         // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
@@ -141,19 +161,10 @@ void image_source_build_ramp(void) {
     }
 }
 
-// Fixed palette of full-scale colours (0-255), stepped through around the circle
-static const uint8_t PALETTE[][CHANNELS] = {
-    {255, 0, 0},     // red
-    {0, 255, 0},     // green
-    {0, 0, 255},     // blue
-    {255, 255, 0},   // yellow
-    {0, 255, 255},   // cyan
-    {255, 0, 255},   // magenta
-};
-#define PALETTE_SIZE (sizeof(PALETTE) / sizeof(PALETTE[0]))
-
-// Colour-wheel test pattern: steps through PALETTE in equal-sized bands around the circle
-void image_source_build_palette(void) {
+// Test pattern: all three channels ramp together, 0 to full scale once per revolution
+// Should be black-gray-white gradient revealing white-point errors
+// Used to tune channel scales
+void image_source_build_gray_ramp(void) {
 
     // Column content is a function of angle only, not which wing so frame same for each wing
     uint8_t frame[LEDS_PER_WING][CHANNELS];
@@ -161,14 +172,35 @@ void image_source_build_palette(void) {
     for (int col = 0; col < NUM_COLUMNS; col++) {
         frame_buffer_clear(frame);
 
-        int band = col * PALETTE_SIZE / NUM_COLUMNS;
+        uint8_t level_255 = (uint8_t)(col * 255 / (NUM_COLUMNS - 1));
 
         for (int led = 0; led < LEDS_PER_WING; led++) {
             for (int ch = 0; ch < CHANNELS; ch++) {
-                frame_buffer_set(frame, led, ch, apply_calibration(PALETTE[band][ch], ch, led, col));
+                frame_buffer_set(frame, led, ch, apply_calibration(level_255, ch, led, col));
             }
         }
 
+        // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
+        for (int plane = 0; plane < calibration.bcm_bits; plane++) {
+            frame_buffer_to_words(frame, frame, plane, image_lhs_words[col][plane], image_rhs_words[col][plane]);
+        }
+    }
+}
+
+// Test pattern: flat full-scale white, same at every column and every LED.
+// Isolated radial falloff correction
+// Also can be used to find max safe duty fraction before brownout
+void image_source_build_radial_white(void) {
+    // Column content same for each column so build once
+    uint8_t frame[LEDS_PER_WING][CHANNELS];
+    frame_buffer_clear(frame);
+    for (int led = 0; led < LEDS_PER_WING; led++) {
+        for (int ch = 0; ch < CHANNELS; ch++) {
+            frame_buffer_set(frame, led, ch, apply_calibration(255, ch, led, 0));
+        }
+    }
+
+    for (int col = 0; col < NUM_COLUMNS; col++) {
         // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
         for (int plane = 0; plane < calibration.bcm_bits; plane++) {
             frame_buffer_to_words(frame, frame, plane, image_lhs_words[col][plane], image_rhs_words[col][plane]);
@@ -227,11 +259,27 @@ void image_source_build_rainbow(void) {
     }
 }
 
+// Calls the build_* function for one TEST_PATTERN_* id, and records
+// it as the current display source so a later calibration change rebuilds it
+void image_source_show_test_pattern(uint8_t pattern_id) {
+    switch (pattern_id) {
+        case TEST_PATTERN_RED_RAMP:     image_source_build_channel_ramp(RED); break;
+        case TEST_PATTERN_GREEN_RAMP:   image_source_build_channel_ramp(GREEN); break;
+        case TEST_PATTERN_BLUE_RAMP:    image_source_build_channel_ramp(BLUE); break;
+        case TEST_PATTERN_GRAY_RAMP:    image_source_build_gray_ramp(); break;
+        case TEST_PATTERN_RADIAL_WHITE: image_source_build_radial_white(); break;
+        case TEST_PATTERN_RAINBOW:      image_source_build_rainbow(); break;
+        default: return; // unknown pattern id, ignore - leave current_mode untouched
+    }
+    current_mode = IMAGE_SOURCE_TEST_PATTERN;
+    current_test_pattern_id = pattern_id;
+}
+
 // Sets one column from raw 0-255 RGB, e.g. pushed live over SPI
 void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]) {
     // Remember the raw (uncalibrated) values so a later calibration change applies to raw frame
     memmove(last_frame[col], rgb, sizeof(last_frame[col])); // Not memcpy as source and destination may be same if called from set_calibration
-    has_uploaded_frame = true;
+    current_mode = IMAGE_SOURCE_UPLOADED_FRAME;
 
     uint8_t frame[LEDS_PER_WING][CHANNELS];
     frame_buffer_clear(frame);

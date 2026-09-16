@@ -15,6 +15,7 @@
 #define CMD_PUSH_COLUMN    0x03
 #define CMD_SET_CALIBRATION 0x04
 #define CMD_GET_CALIBRATION 0x05
+#define CMD_SHOW_TEST_PATTERN 0x06
 
 // GET_STATUS response payload
 typedef struct {
@@ -42,3 +43,12 @@ typedef struct {
     float bcm_bits; // BCM bit depth, 1-BCM_BITS_MAX (8) - float for uniform layout, rounded and clamped on receipt
 } calibration_payload_t;
 #define CALIBRATION_PAYLOAD_SIZE (sizeof(calibration_payload_t))
+
+// SHOW_TEST_PATTERN payload: 1-byte pattern ID, one of TEST_PATTERN_*. No reply.
+#define TEST_PATTERN_PAYLOAD_SIZE 1
+#define TEST_PATTERN_RED_RAMP    0 // angular ramp, red only, 0 to full scale once per revolution
+#define TEST_PATTERN_GREEN_RAMP  1 // green ramp
+#define TEST_PATTERN_BLUE_RAMP   2 // blue ramp
+#define TEST_PATTERN_GRAY_RAMP   3 // all channels (grey) ramp
+#define TEST_PATTERN_RADIAL_WHITE 4 // solid white
+#define TEST_PATTERN_RAINBOW     5 // smooth hue sweep, one full turn per revolution

@@ -235,6 +235,43 @@ bool spi_link_get_calibration(calibration_payload_t *out) {
     return true;
 }
 
+bool spi_link_show_test_pattern(uint8_t pattern_id) {
+    // Wait for RP2350 ready, then send the command byte (no rx)
+    if (!wait_ready()) {
+        ESP_LOGW(TAG, "RP2350 not ready for SHOW_TEST_PATTERN command");
+        return false;
+    }
+    uint8_t cmd = CMD_SHOW_TEST_PATTERN;
+    spi_transaction_t cmd_t = {
+        .length = 8,
+        .tx_buffer = &cmd,
+    };
+    esp_err_t err = spi_device_transmit(spi_dev, &cmd_t);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SHOW_TEST_PATTERN command transaction failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    // Wait for RP2350 ready
+    if (!wait_ready()) {
+        ESP_LOGW(TAG, "RP2350 not ready for test pattern id payload");
+        return false;
+    }
+    WORD_ALIGNED_ATTR uint8_t payload = pattern_id; // Must be word aligned for DMA
+    spi_transaction_t payload_t = {
+        .length = TEST_PATTERN_PAYLOAD_SIZE * 8,
+        .tx_buffer = &payload,
+    };
+    // Send transaction (no rx expected back) and check for errors
+    err = spi_device_transmit(spi_dev, &payload_t);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "test pattern id payload transaction failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    return true;
+}
+
 // Note the return value is whether successful, and output is written to the pointer given as argument
 bool spi_link_get_status(spi_status_t *out) {
     uint8_t resp[sizeof(spi_status_t)]; // Byte array correctly sized

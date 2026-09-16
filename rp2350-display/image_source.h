@@ -18,14 +18,20 @@ Difference in wing positions is handled by render loop.
 extern uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
 extern uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
 
-// Build test image - red brightness ramps 0 to the active bcm_max_level once per revolution
-void image_source_build_ramp(void);
+// Test pattern - one channel (RED/GREEN/BLUE) ramps 0 to full scale
+void image_source_build_channel_ramp(int channel);
 
-// Build test image - a colour wheel stepping through PALETTE in equal bands
-void image_source_build_palette(void);
+// Test pattern - all channels ramp together 0 to full scale
+void image_source_build_gray_ramp(void);
 
-// Build test image - a smooth rainbow, one full turn of hue around the circle
+// Test pattern - flat full-scale white everywhere
+void image_source_build_radial_white(void);
+
+// Test pattern - a smooth rainbow, one full turn of hue around the circle
 void image_source_build_rainbow(void);
+
+// Displays one TEST_PATTERN_* id
+void image_source_show_test_pattern(uint8_t pattern_id);
 
 // Sets one column from raw 0-255 RGB, e.g. pushed live over SPI from the ESP32
 void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]);

@@ -30,3 +30,7 @@ bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float
 
 // Sends CMD_GET_CALIBRATION, fills out with the RP2350's current live calibration values
 bool spi_link_get_calibration(calibration_payload_t *out);
+
+// Sends CMD_SHOW_TEST_PATTERN - displays one of the TEST_PATTERN_* built-in
+// calibration patterns, generated on the RP2350
+bool spi_link_show_test_pattern(uint8_t pattern_id);

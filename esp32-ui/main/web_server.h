@@ -9,5 +9,6 @@
 // GET "/calibration" - reads the rp2350's current live colour calibration via SPI
 // POST "/calibration" - pushes new colour calibration (r/g/b scale + gamma) to rp2350 via SPI
 // GET "/status" - reports the rp2350's current status (rpm, uptime) as JSON, from an SPI query
+// POST "/test-pattern" - displays one of the rp2350's built-in calibration test patterns
 // Call after AP init
 void web_server_start(void);

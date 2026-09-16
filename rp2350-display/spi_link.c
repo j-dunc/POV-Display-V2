@@ -147,6 +147,16 @@ void spi_link_command_loop(void) {
                 break;
             }
 
+            case CMD_SHOW_TEST_PATTERN: {
+                uint8_t pattern_id;
+                gpio_put(PIN_RP_ESP32_GPIO, 1); // ready for the pattern id payload
+                if (!spi_read_with_timeout(&pattern_id, TEST_PATTERN_PAYLOAD_SIZE)) continue;
+                gpio_put(PIN_RP_ESP32_GPIO, 0);
+
+                image_source_show_test_pattern(pattern_id);
+                break;
+            }
+
             default:
                 break; // unknown command, ignore
         }

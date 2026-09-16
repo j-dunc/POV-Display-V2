@@ -243,10 +243,55 @@ static const httpd_uri_t status_get_uri = {
     .handler = status_get_handler,
 };
 
+// OPTIONS needed if POST sent from external origin
+static esp_err_t test_pattern_options_handler(httpd_req_t *req) {
+    add_cors_headers(req);
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+// Accepts a 1-byte TEST_PATTERN_* id and forwards to RP2350
+static esp_err_t test_pattern_post_handler(httpd_req_t *req) {
+    add_cors_headers(req);
+
+    if (req->content_len != TEST_PATTERN_PAYLOAD_SIZE) {
+        ESP_LOGW(TAG, "wrong test pattern size: got %d, expected %d", (int)req->content_len, TEST_PATTERN_PAYLOAD_SIZE);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "wrong test pattern size");
+        return ESP_FAIL;
+    }
+
+    uint8_t pattern_id;
+    int ret = httpd_req_recv(req, (char *)&pattern_id, TEST_PATTERN_PAYLOAD_SIZE);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "receive failed");
+        return ESP_FAIL;
+    }
+
+    if (!spi_link_show_test_pattern(pattern_id)) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "push to RP2350 failed");
+        return ESP_FAIL;
+    }
+
+    httpd_resp_send(req, "OK", HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
+static const httpd_uri_t test_pattern_post_uri = {
+    .uri = "/test-pattern",
+    .method = HTTP_POST,
+    .handler = test_pattern_post_handler,
+};
+
+static const httpd_uri_t test_pattern_options_uri = {
+    .uri = "/test-pattern",
+    .method = HTTP_OPTIONS,
+    .handler = test_pattern_options_handler,
+};
+
 void web_server_start(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 12;
+    config.max_uri_handlers = 16; // default of 8 isn't enough for all the routes registered below
 
     ESP_LOGI(TAG, "starting server on port %d", config.server_port);
     ESP_ERROR_CHECK(httpd_start(&server, &config));
@@ -260,4 +305,6 @@ void web_server_start(void) {
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_options_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &status_get_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &test_pattern_post_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &test_pattern_options_uri));
 }

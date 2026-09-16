@@ -61,8 +61,8 @@ void render_init(void) {
 #if SIMULATE_HALL
     sim_start_us = time_us_64();
 #endif
-
-    image_source_build_palette(); // holds each colour for ~50 columns - easier to scope-check a channel's BCM shape than the rainbow's constantly-shifting hue
+    // PUT DEFAULT PATTERN BUILD HERE
+    // No default pattern - blank until image sent by ESP32
 }
 
 /*
