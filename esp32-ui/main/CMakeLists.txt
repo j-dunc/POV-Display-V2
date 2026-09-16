@@ -1,4 +1,4 @@
-idf_component_register(SRCS "main.c" "spi_link.c" "wifi_ap.c" "web_server.c" "test_pattern.c"
+idf_component_register(SRCS "main.c" "spi_link.c" "wifi_ap.c" "web_server.c"
                     INCLUDE_DIRS "." "../../shared"
                     EMBED_TXTFILES "converter.html" "calibrate.html" "status.js"
                     REQUIRES esp_driver_spi esp_driver_gpio log
