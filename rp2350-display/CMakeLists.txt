@@ -37,15 +37,15 @@ pico_sdk_init()
 
 add_executable(rp2350-display
     main.c
-    led_shift.c
-    frame_buffer.c
-    led_map.c
-    hall_sensor.c
-    image_source.c
-    render.c
-    spi_link.c)
+    spi_link.c
+    drivers/led_shift.c
+    drivers/hall_sensor.c
+    render/frame_buffer.c
+    render/led_map.c
+    render/image_source.c
+    render/render.c)
 
-pico_generate_pio_header(rp2350-display ${CMAKE_CURRENT_LIST_DIR}/led_shift.pio)
+pico_generate_pio_header(rp2350-display ${CMAKE_CURRENT_LIST_DIR}/drivers/led_shift.pio)
 
 pico_set_program_name(rp2350-display "rp2350-display")
 pico_set_program_version(rp2350-display "0.1")
@@ -65,6 +65,8 @@ target_link_libraries(rp2350-display
 # Add the standard include files to the build
 target_include_directories(rp2350-display PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/drivers
+        ${CMAKE_CURRENT_LIST_DIR}/render
         ${CMAKE_CURRENT_LIST_DIR}/../shared
 )
 
