@@ -13,11 +13,26 @@ extern const uint8_t converter_html_end[] asm("_binary_converter_html_end");
 extern const uint8_t calibrate_html_start[] asm("_binary_calibrate_html_start");
 extern const uint8_t calibrate_html_end[] asm("_binary_calibrate_html_end");
 
-// Handles request defined by index_uri below
-static esp_err_t index_get_handler(httpd_req_t *req) {
+// Handles request defined by upload_uri below
+static esp_err_t upload_get_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, (const char *)converter_html_start,
                      converter_html_end - converter_html_start);
+    return ESP_OK;
+}
+
+// Routing table entry: GET "/upload" -> upload_get_handler
+static const httpd_uri_t upload_uri = {
+    .uri = "/upload",
+    .method = HTTP_GET,
+    .handler = upload_get_handler,
+};
+
+// Redirects bare "/" (e.g. pov.local) to "/upload"
+static esp_err_t index_get_handler(httpd_req_t *req) {
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/upload");
+    httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
 
@@ -190,6 +205,7 @@ void web_server_start(void) {
     ESP_LOGI(TAG, "starting server on port %d", config.server_port);
     ESP_ERROR_CHECK(httpd_start(&server, &config));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &index_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &upload_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibrate_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_options_uri));

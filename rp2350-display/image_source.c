@@ -17,10 +17,11 @@ typedef struct {
     float radial_gamma;
 } color_calibration_t;
 
+// This is single source of truth for defaults - values revert to this on reset
 static color_calibration_t calibration = {
     .scale = { 1.0f, 0.4f, 0.25f }, // R, G, B
     .gamma = 2.2f,
-    .radial_gamma = 0.0f, // 0 = no radial correction
+    .radial_gamma = 0.4f, // 0 = no radial correction
 };
 
 // Converts one raw 0-255 channel value, at a given radial LED position, to a
