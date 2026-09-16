@@ -22,9 +22,9 @@ typedef struct {
 
 // This is single source of truth for defaults - values revert to this on reset
 static color_calibration_t calibration = {
-    .scale = { 1.0f, 0.5f, 0.3f }, // R, G, B
+    .scale = { 1.5f, 0.75f, 0.45f }, // R, G, B
     .gamma = 3.5f,
-    .radial_gamma = 0.6f, // 0 = no radial correction
+    .radial_gamma = 0.3f, // 0 = no radial correction
     .dither_enabled = true,
     .bcm_bits = 8,
 };
