@@ -29,6 +29,7 @@
         </select>
     </label>
     <label>Background colour: <input type="color" id="bgColorInput" value="#000000"></label>
+    <label>Antialiasing: <input type="range" id="aaInput" min="1" max="5" step="1" style="width: 120px;"> <span id="aaVal"></span></label>
     <button id="sendBtn" disabled>Send to display</button>
     <span id="statusEl"></span>
 </div>
@@ -53,13 +54,29 @@ const LEDS_PER_WING = 48;  // radial samples
 const ROTATION_OFFSET_DEG = -90; // determined by trial
 const ROTATION_OFFSET_RAD = ROTATION_OFFSET_DEG * Math.PI / 180;
 
+// NxN sub-samples averaged per polar cell for antialiasing - resets to this default on reload
+const AA_DEFAULT = 3;
+let SUPERSAMPLE = AA_DEFAULT;
+
 const fileInput = document.getElementById('fileInput');
 const fitModeInput = document.getElementById('fitModeInput');
 const bgColorInput = document.getElementById('bgColorInput');
+const aaInput = document.getElementById('aaInput');
+const aaVal = document.getElementById('aaVal');
 const sendBtn = document.getElementById('sendBtn');
 const statusEl = document.getElementById('statusEl');
 const sourceCanvas = document.getElementById('sourceCanvas');
 const reconCanvas = document.getElementById('reconCanvas');
+
+aaInput.value = AA_DEFAULT;
+aaVal.textContent = `${AA_DEFAULT}x${AA_DEFAULT}`;
+
+// Reprocess antialising live on drag
+aaInput.addEventListener('input', () => {
+    SUPERSAMPLE = parseInt(aaInput.value, 10);
+    aaVal.textContent = SUPERSAMPLE == 1 ? 'off' : `${SUPERSAMPLE}x${SUPERSAMPLE}`;
+    if (lastImg) processImage(lastImg);
+});
 
 let lastFrame = null; // most recently sampled frame, for the send button
 let lastImg = null; // most recently loaded image, so fit/colour changes can re-run without re-uploading
@@ -141,33 +158,60 @@ function processImage(img) {
 For every (column, radius) pair, map back to an (x, y) in the source image
 and read its colour. Centre of the source square = polar origin
 its inscribed circle (radius = size/2) = the display's outer edge.
+Each (column, radius) cell is antialiased by averaging an NxN grid
 */
 function sampleToPolarFrame(pixels, size, rotationRad) {
     const frame = new Uint8ClampedArray(NUM_COLUMNS * LEDS_PER_WING * 3);
     const cx = size / 2; // centre coords
     const cy = size / 2;
     const maxRadiusPx = size / 2;
+    const angleStep = (2 * Math.PI) / NUM_COLUMNS; // angular width of one column
+    const radiusStep = maxRadiusPx / LEDS_PER_WING; // radial width of one LED step
 
     // Loop through columns and radius and match each (c,r) pixel to (x,y) in image
     for (let c = 0; c < NUM_COLUMNS; c++) {
-        const angle = (c / NUM_COLUMNS) * 2 * Math.PI + rotationRad;
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
+        const baseAngle = (c / NUM_COLUMNS) * 2 * Math.PI + rotationRad;
 
         for (let r = 0; r < LEDS_PER_WING; r++) {
-            const radiusPx = (r / (LEDS_PER_WING - 1)) * maxRadiusPx; // 0 maps to 0, 47 (outer led) maps to maxRadiusPx
-            const x = Math.round(cx + radiusPx * cos); // map angle,radius polar coords where polar origin is centre of square to x,y coords
-            const y = Math.round(cy - radiusPx * sin); // y mirrored to match spin direction
+            // LED r sits at the centre of its own radial step
+            const baseRadius = (r + 0.5) * radiusStep;
 
-            // calculate index into flat 1D byte array
-            // for x and y in image, and radius and column in frame
-            const srcIdx = (y * size + x) * 4; // skip y rows then x into row, note each pixel is 4 bytes as RGBA
+            // Averaging sub-samples
+            let rSum = 0, gSum = 0, bSum = 0;
+            for (let sa = 0; sa < SUPERSAMPLE; sa++) {
+                // Sub-sample offsets spread evenly across the cell, centred on 0
+                const angleOffset = SUPERSAMPLE === 1 ? 0 : (sa / (SUPERSAMPLE - 1) - 0.5) * angleStep; // Gives [-0.5,0.5] * angleStep. Default to 0 to avoid div by 0 if 1x1
+                const angle = baseAngle + angleOffset;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+
+                for (let sr = 0; sr < SUPERSAMPLE; sr++) {
+                    const radiusOffset = SUPERSAMPLE === 1 ? 0 : (sr / (SUPERSAMPLE - 1) - 0.5) * radiusStep;
+                    const radiusPx = Math.max(0, baseRadius + radiusOffset); // Prevent negative radius
+
+                    const x = Math.round(cx + radiusPx * cos); // map angle,radius polar coords where polar origin is centre of square to x,y coords
+                    const y = Math.round(cy - radiusPx * sin); // y mirrored to match spin direction
+                    // Clamp to canvas bounds so cells near the edge don't read outside the pixel array
+                    const xc = Math.min(size - 1, Math.max(0, x));
+                    const yc = Math.min(size - 1, Math.max(0, y));
+
+                    // Calculate index into flat 1D byte array of source
+                    const srcIdx = (yc * size + xc) * 4; // skip y rows then x into row, note each pixel is 4 bytes as RGBA
+                    // Add sums of subsamples for averaging
+                    rSum += pixels.data[srcIdx];
+                    gSum += pixels.data[srcIdx + 1];
+                    bSum += pixels.data[srcIdx + 2];
+                }
+            }
+
+            const sampleCount = SUPERSAMPLE * SUPERSAMPLE;
+            // Calculate index into flat 1D byte array for destination
             const dstIdx = (c * LEDS_PER_WING + r) * 3; // skip c columns then r into column, note each pixel is 3 bytes as RGB
 
-            // Copy RGB from x,y pixel of source to column,radius of frame
-            frame[dstIdx]     = pixels.data[srcIdx];
-            frame[dstIdx + 1] = pixels.data[srcIdx + 1];
-            frame[dstIdx + 2] = pixels.data[srcIdx + 2];
+            // Calculate averages and set in frame
+            frame[dstIdx]     = rSum / sampleCount;
+            frame[dstIdx + 1] = gSum / sampleCount;
+            frame[dstIdx + 2] = bSum / sampleCount;
         }
     }
     return frame;
@@ -201,7 +245,7 @@ function drawReconstruction(frame, size, rotationRad) {
 
             // Map angle and radius to column and led
             const c = Math.round((angle / (2 * Math.PI)) * NUM_COLUMNS) % NUM_COLUMNS;
-            const r = Math.round((radiusPx / maxRadiusPx) * (LEDS_PER_WING - 1));
+            const r = Math.min(LEDS_PER_WING - 1, Math.floor((radiusPx / maxRadiusPx) * LEDS_PER_WING)); // Clamp to max radius
 
             // Copy rgb from frame to preview image
             const srcIdx = (c * LEDS_PER_WING + r) * 3;
