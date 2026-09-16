@@ -14,6 +14,7 @@
 #define CMD_GET_STATUS     0x02
 #define CMD_PUSH_COLUMN    0x03
 #define CMD_SET_CALIBRATION 0x04
+#define CMD_GET_CALIBRATION 0x05
 
 // GET_STATUS response payload
 typedef struct {
@@ -28,6 +29,7 @@ typedef struct {
 
 // SET_CALIBRATION payload: per-channel brightness scale , a shared gamma exponent, and a radial exponent
 // Applied to every colour before it's converted to BCM. No reply is sent.
+// GET_CALIBRATION has no payload; it replies with the current values in this same layout
 typedef struct {
     float r_scale;
     float g_scale;

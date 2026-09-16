@@ -222,6 +222,19 @@ bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float
     return true;
 }
 
+bool spi_link_get_calibration(calibration_payload_t *out) {
+    uint8_t resp[sizeof(calibration_payload_t)];
+
+    // Send transaction and check for error
+    if (!spi_link_transact(CMD_GET_CALIBRATION, resp, sizeof(resp))) {
+        return false;
+    }
+
+    // Copy response bytes across types (raw bytes back to calibration_payload_t type)
+    memcpy(out, resp, sizeof(calibration_payload_t));
+    return true;
+}
+
 bool spi_link_get_status(spi_status_t *out) {
     uint8_t resp[sizeof(spi_status_t)]; // Byte array correctly sized
 

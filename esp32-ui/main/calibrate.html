@@ -18,23 +18,23 @@
 <div class="controls">
     <div class="control">
         <label>Red scale <span id="rVal"></span></label>
-        <input type="range" id="rInput" min="0" max="2" step="0.01" value="1.0">
+        <input type="range" id="rInput" min="0" max="2" step="0.01">
     </div>
     <div class="control">
         <label>Green scale <span id="gVal"></span></label>
-        <input type="range" id="gInput" min="0" max="2" step="0.01" value="0.3">
+        <input type="range" id="gInput" min="0" max="2" step="0.01">
     </div>
     <div class="control">
         <label>Blue scale <span id="bVal"></span></label>
-        <input type="range" id="bInput" min="0" max="2" step="0.01" value="1.0">
+        <input type="range" id="bInput" min="0" max="2" step="0.01">
     </div>
     <div class="control">
         <label>Gamma <span id="gammaVal"></span></label>
-        <input type="range" id="gammaInput" min="1" max="4" step="0.05" value="2.2">
+        <input type="range" id="gammaInput" min="1" max="4" step="0.05">
     </div>
     <div class="control">
         <label>Radial falloff correction <span id="radialVal"></span></label>
-        <input type="range" id="radialInput" min="0" max="1.5" step="0.05" value="0">
+        <input type="range" id="radialInput" min="0" max="1.5" step="0.05">
     </div>
 </div>
 
@@ -71,6 +71,7 @@ function scheduleSend() {
     sendTimer = setTimeout(sendCalibration, 80);
 }
 
+// Send calibration values via POST endpoint
 async function sendCalibration() {
     // 5 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma - matches calibration_payload_t
     const buf = new ArrayBuffer(20);
@@ -100,6 +101,31 @@ for (const input of [rInput, gInput, bInput, gammaInput, radialInput]) {
         scheduleSend();
     });
 }
+
+// Loads the RP2350's current live calibration so sliders start in the right place
+async function loadCalibration() {
+    statusEl.textContent = 'loading...';
+    try {
+        const res = await fetch('/calibration');
+        if (!res.ok) {
+            statusEl.textContent = `error: ${res.status} ${await res.text()}`;
+            return;
+        }
+        const buf = await res.arrayBuffer();
+        const view = new DataView(buf);
+        rInput.value = view.getFloat32(0, true);
+        gInput.value = view.getFloat32(4, true);
+        bInput.value = view.getFloat32(8, true);
+        gammaInput.value = view.getFloat32(12, true);
+        radialInput.value = view.getFloat32(16, true);
+        updateLabels();
+        statusEl.textContent = '';
+    } catch (err) {
+        statusEl.textContent = `failed: ${err.message}`;
+    }
+}
+
+loadCalibration();
 
 </script>
 </body>

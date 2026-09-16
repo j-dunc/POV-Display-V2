@@ -60,6 +60,14 @@ void image_source_set_calibration(float r_scale, float g_scale, float b_scale, f
     }
 }
 
+void image_source_get_calibration(calibration_payload_t *out) {
+    out->r_scale = calibration.scale[RED];
+    out->g_scale = calibration.scale[GREEN];
+    out->b_scale = calibration.scale[BLUE];
+    out->gamma = calibration.gamma;
+    out->radial_gamma = calibration.radial_gamma;
+}
+
 // Stores the entire image, word array per BCM bit-plane per column
 uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS][16];
 uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS][16];

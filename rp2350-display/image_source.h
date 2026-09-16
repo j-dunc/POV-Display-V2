@@ -4,6 +4,7 @@
 
 #include "frame_geometry.h"
 #include "frame_buffer.h"
+#include "spi_protocol.h"
 
 /*
 Contains a 16-cycle word array per BCM bit-plane, per column.
@@ -30,3 +31,6 @@ void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]
 // Updates the live colour calibration (per-channel balance scale, gamma, and
 // radial falloff correction) and redraws what's on screen with it applied
 void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma);
+
+// Reads back the current live colour calibration
+void image_source_get_calibration(calibration_payload_t *out);

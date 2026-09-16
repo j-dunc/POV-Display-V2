@@ -133,6 +133,15 @@ void spi_link_command_loop(void) {
                 break;
             }
 
+            case CMD_GET_CALIBRATION: {
+                calibration_payload_t payload;
+                image_source_get_calibration(&payload);
+                gpio_put(PIN_RP_ESP32_GPIO, 1); // ready with the reply
+                if (!spi_write_with_timeout((uint8_t *)&payload, sizeof(payload))) continue;
+                gpio_put(PIN_RP_ESP32_GPIO, 0);
+                break;
+            }
+
             default:
                 break; // unknown command, ignore
         }

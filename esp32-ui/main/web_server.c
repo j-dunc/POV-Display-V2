@@ -149,7 +149,28 @@ static esp_err_t calibration_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// Routing table entries for POST and OPTIONS for /calibration
+// Reports the RP2350's current live calibration values, so the UI can show real values
+static esp_err_t calibration_get_handler(httpd_req_t *req) {
+    add_cors_headers(req);
+
+    calibration_payload_t payload;
+    if (!spi_link_get_calibration(&payload)) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "read from RP2350 failed");
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_send(req, (const char *)&payload, sizeof(payload));
+    return ESP_OK;
+}
+
+// Routing table entries for GET, POST and OPTIONS for /calibration
+static const httpd_uri_t calibration_get_uri = {
+    .uri = "/calibration",
+    .method = HTTP_GET,
+    .handler = calibration_get_handler,
+};
+
 static const httpd_uri_t calibration_post_uri = {
     .uri = "/calibration",
     .method = HTTP_POST,
@@ -172,6 +193,7 @@ void web_server_start(void) {
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibrate_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_options_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_get_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_options_uri));
 }
