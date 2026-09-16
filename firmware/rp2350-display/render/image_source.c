@@ -163,8 +163,58 @@ int image_source_get_bcm_bits(void) {
 
 // Stores the entire image, word array per BCM bit-plane per column. Sized to BCM_BITS_MAX
 // only planes 0..bcm_bits-1 are meaningful at any time
-uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
-uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
+// Double buffered so render.c is never reading a half-built frame: image_*_words is
+// the front buffer render.c reads every revolution, back_*_words is what gets written
+// here. Once every column has landed in the back buffer since the last swap, it's
+// swapped in for render.c to pick up next revolution.
+static uint16_t buffer_lhs[2][NUM_COLUMNS][BCM_BITS_MAX][16]; // front and back buffers
+static uint16_t buffer_rhs[2][NUM_COLUMNS][BCM_BITS_MAX][16];
+
+uint16_t (*image_lhs_words)[BCM_BITS_MAX][16] = buffer_lhs[0];
+uint16_t (*image_rhs_words)[BCM_BITS_MAX][16] = buffer_rhs[0];
+static uint16_t (*back_lhs_words)[BCM_BITS_MAX][16] = buffer_lhs[1];
+static uint16_t (*back_rhs_words)[BCM_BITS_MAX][16] = buffer_rhs[1];
+
+// Tracks which columns of the back buffer have been written since the last swap
+static bool column_written[NUM_COLUMNS];
+static int columns_written_count = 0;
+
+// Set once back buffer has finished filling
+// So buffers can be swapped when rev has finished
+static volatile bool frame_ready = false;
+
+// Encodes one column into the back buffer, then marks a full frame ready to swap in
+// once every column of it has landed in the back buffer since the last swap
+static void write_column(int col, const uint8_t lhs_frame[LEDS_PER_WING][CHANNELS], const uint8_t rhs_frame[LEDS_PER_WING][CHANNELS]) {
+    frame_buffer_to_planes(lhs_frame, rhs_frame, calibration.bcm_bits, back_lhs_words[col], back_rhs_words[col]);
+
+    if (!column_written[col]) {
+        column_written[col] = true;
+        columns_written_count++;
+
+        if (columns_written_count == NUM_COLUMNS) {
+            frame_ready = true;
+            columns_written_count = 0;
+            memset(column_written, 0, sizeof(column_written));
+        }
+    }
+}
+
+// Swaps the front/back buffers if a full frame has finished landing in the back buffer
+// Called by render.c at revolution boundary
+void image_source_swap_pending_frame(void) {
+    if (!frame_ready) return;
+
+    // Swap pointers
+    uint16_t (*swap_lhs)[BCM_BITS_MAX][16] = image_lhs_words; // temp stash pointer to swap
+    uint16_t (*swap_rhs)[BCM_BITS_MAX][16] = image_rhs_words;
+    image_lhs_words = back_lhs_words;
+    image_rhs_words = back_rhs_words;
+    back_lhs_words = swap_lhs;
+    back_rhs_words = swap_rhs;
+
+    frame_ready = false;
+}
 
 
 // Test pattern: one channel ramps 0 to full scale once per revolution
@@ -184,8 +234,8 @@ void image_source_build_channel_ramp(int channel) {
             frame_buffer_set(frame, led, channel, apply_calibration(level_255, channel, led, col));
         }
 
-        // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-        frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
+        // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
+        write_column(col, frame, frame);
     }
 }
 
@@ -208,8 +258,8 @@ void image_source_build_gray_ramp(void) {
             }
         }
 
-        // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-        frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
+        // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
+        write_column(col, frame, frame);
     }
 }
 
@@ -227,8 +277,8 @@ void image_source_build_radial_white(void) {
     }
 
     for (int col = 0; col < NUM_COLUMNS; col++) {
-        // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-        frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
+        // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
+        write_column(col, frame, frame);
     }
 }
 
@@ -276,8 +326,8 @@ void image_source_build_rainbow(void) {
             }
         }
 
-        // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-        frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
+        // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
+        write_column(col, frame, frame);
     }
 }
 
@@ -312,6 +362,6 @@ void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]
         }
     }
 
-    // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-    frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
+    // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
+    write_column(col, frame, frame);
 }

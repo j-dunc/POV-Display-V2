@@ -14,9 +14,16 @@ Built before render so no build timing cost at render time.
 Note these are different from LHS to RHS only because bit layout differs per wing.
 Column-Frame mapping is identical between LHS and RHS because column identifies a fixed angular position.
 Difference in wing positions is handled by render loop.
+
+Double buffered: this is the front buffer, which render.c reads every revolution.
+image_source.c writes new frames into a separate back buffer and marks as ready when full
 */
-extern uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
-extern uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
+extern uint16_t (*image_lhs_words)[BCM_BITS_MAX][16]; // pointer to one column's frame buffer of 16-bit words
+extern uint16_t (*image_rhs_words)[BCM_BITS_MAX][16];
+
+// Swaps in a newly finished frame if one is ready
+// Called by render.c at rev boundary
+void image_source_swap_pending_frame(void);
 
 // (Re)builds the calibration lookup tables from the current calibration values.
 // Reduces per frame computational cost

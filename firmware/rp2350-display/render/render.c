@@ -4,6 +4,8 @@
 #include "led_shift.h"
 #include "pins.h"
 
+#include <stdbool.h>
+
 #include "pico/stdlib.h"
 #include "pico/platform.h"
 #include "hardware/gpio.h"
@@ -170,11 +172,17 @@ void render_update(void) {
         // Re-anchor the grid to the real shaft position if necessary
         uint32_t now_cycle = DWT->CYCCNT;
         int32_t schedule_error = (int32_t)(now_cycle - next_column_start_cycle);
-        if (last_col_rhs < 0 // Display blanked - invalid RPM or startup
-            || col_rhs < last_col_rhs  // Full revolution completed             
-            || schedule_error > (int32_t)column_dwell_cycles // Grid has fallen more than a column behind schedule             
+        bool new_revolution = last_col_rhs < 0 // Display blanked - invalid RPM or startup
+            || col_rhs < last_col_rhs; // Full revolution completed
+        if (new_revolution
+            || schedule_error > (int32_t)column_dwell_cycles // Grid has fallen more than a column behind schedule
             || schedule_error < -(int32_t)column_dwell_cycles) { // Grid is ahead by more than a column
             next_column_start_cycle = now_cycle;
+        }
+
+        // Only swap in a newly finished frame at a revolution boundary
+        if (new_revolution) {
+            image_source_swap_pending_frame();
         }
 
         show_column_bcm(col_lhs, col_rhs, column_dwell_cycles, next_column_start_cycle);
