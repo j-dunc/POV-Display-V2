@@ -12,9 +12,13 @@
     p { color: #aaa; font-size: 14px; }
     a { color: #6cf; }
     #result { background: #000; border: 1px solid #555; padding: 8px 12px; font-family: monospace; white-space: pre; margin-top: 16px; }
+    #statusBar { font-size: 13px; color: #aaa; margin-bottom: 16px; }
+    #statusBar.offline { color: #f66; }
 </style>
 </head>
 <body>
+<div id="statusBar">-</div>
+
 <div class="controls">
     <div class="control">
         <label>Red scale <span id="rVal"></span></label>
@@ -161,5 +165,6 @@ async function loadCalibration() {
 loadCalibration();
 
 </script>
+<script src="/status.js"></script>
 </body>
 </html>

@@ -9,6 +9,9 @@
 // Configures SPI2_HOST as master on GPIO2/6/7/10
 void spi_link_init(void);
 
+// Note that for each command that expects a response,
+// The return value is a bool whether succesful
+// The output is written to the pointer given to the function
 
 // Sends CMD_PING, waits for the RP2350 to echo it back. Logs result.
 bool spi_link_ping(void);

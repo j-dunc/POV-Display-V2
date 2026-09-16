@@ -12,9 +12,13 @@
     h3 { margin: 0 0 4px; font-size: 14px; font-weight: normal; color: #aaa; }
     .controls { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
     .controls label { display: flex; align-items: center; gap: 8px; }
+    #statusBar { font-size: 13px; color: #aaa; margin-bottom: 16px; }
+    #statusBar.offline { color: #f66; }
 </style>
 </head>
 <body>
+
+<div id="statusBar">-</div>
 
 <div class="controls">
     <input type="file" id="fileInput" accept="image/*">
@@ -210,5 +214,6 @@ function drawReconstruction(frame, size, rotationRad) {
     ctx.putImageData(imgData, 0, 0);
 }
 </script>
+<script src="/status.js"></script>
 </body>
 </html>

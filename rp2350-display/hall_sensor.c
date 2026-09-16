@@ -53,6 +53,11 @@ float hall_sensor_get_angle_deg(uint64_t now_us) {
 
 uint32_t hall_sensor_get_period_us(void) {
     if (!has_any_trigger || last_half_period_us == 0) return 0; // Return 0 if no period measured
+
+    // Stop reporting a stale period once stopped / hall missed etc, same cutoff as hall_sensor_get_angle_deg
+    uint64_t elapsed = time_us_64() - last_edge_timestamp_us;
+    if (elapsed > (uint64_t)last_half_period_us * 4) return 0;
+
     return last_half_period_us * 2; // half-revolution -> full revolution
 }
 

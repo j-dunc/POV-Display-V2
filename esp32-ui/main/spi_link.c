@@ -235,6 +235,7 @@ bool spi_link_get_calibration(calibration_payload_t *out) {
     return true;
 }
 
+// Note the return value is whether successful, and output is written to the pointer given as argument
 bool spi_link_get_status(spi_status_t *out) {
     uint8_t resp[sizeof(spi_status_t)]; // Byte array correctly sized
 
@@ -246,7 +247,7 @@ bool spi_link_get_status(spi_status_t *out) {
     // Copy response bytes across types (raw bytes back to spi_status_t type)
     memcpy(out, resp, sizeof(spi_status_t));
     // Log response
-    ESP_LOGI(TAG, "status: rpm=%.1f spinning=%d uptime=%lums",
-             out->rpm, out->spinning, (unsigned long)out->uptime_ms);
+    ESP_LOGI(TAG, "status: rpm=%.1f uptime=%lums",
+             out->rpm, (unsigned long)out->uptime_ms);
     return true;
 }

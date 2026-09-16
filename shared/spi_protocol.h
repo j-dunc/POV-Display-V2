@@ -18,8 +18,7 @@
 
 // GET_STATUS response payload
 typedef struct {
-    float rpm;          // 0 if not currently measurable
-    uint8_t spinning;   // 1 if rpm is above the render loop's readable threshold
+    float rpm;          // 0 if not currently measurable, or not spinning fast enough to read
     uint32_t uptime_ms;
 } spi_status_t;
 

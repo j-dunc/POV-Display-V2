@@ -5,19 +5,23 @@
 
 #include "spi_link.h"
 
+#include <stdio.h>
+
 static const char *TAG = "web_server";
 
-// converter.html and calibrate.html from embedded text files
+// converter.html, calibrate.html and status.js from embedded text files
 extern const uint8_t converter_html_start[] asm("_binary_converter_html_start");
 extern const uint8_t converter_html_end[] asm("_binary_converter_html_end");
 extern const uint8_t calibrate_html_start[] asm("_binary_calibrate_html_start");
 extern const uint8_t calibrate_html_end[] asm("_binary_calibrate_html_end");
+extern const uint8_t status_js_start[] asm("_binary_status_js_start");
+extern const uint8_t status_js_end[] asm("_binary_status_js_end");
 
 // Handles request defined by upload_uri below
 static esp_err_t upload_get_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, (const char *)converter_html_start,
-                     converter_html_end - converter_html_start);
+                     converter_html_end - converter_html_start - 1); // -1: remove null terminator at end
     return ESP_OK;
 }
 
@@ -47,7 +51,7 @@ static const httpd_uri_t index_uri = {
 static esp_err_t calibrate_get_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, (const char *)calibrate_html_start,
-                     calibrate_html_end - calibrate_html_start);
+                     calibrate_html_end - calibrate_html_start - 1); // -1: remove null terminator at end
     return ESP_OK;
 }
 
@@ -56,6 +60,21 @@ static const httpd_uri_t calibrate_uri = {
     .uri = "/calibrate",
     .method = HTTP_GET,
     .handler = calibrate_get_handler,
+};
+
+// Handles request defined by status_js_uri below
+static esp_err_t status_js_get_handler(httpd_req_t *req) {
+    httpd_resp_set_type(req, "application/javascript");
+    httpd_resp_send(req, (const char *)status_js_start,
+                     status_js_end - status_js_start - 1); // -1: remove null terminator at end
+    return ESP_OK;
+}
+
+// Routing table entry: GET "/status.js" -> status_js_get_handler
+static const httpd_uri_t status_js_uri = {
+    .uri = "/status.js",
+    .method = HTTP_GET,
+    .handler = status_js_get_handler,
 };
 
 #define FRAME_BYTES (NUM_COLUMNS * LEDS_PER_WING * CHANNELS)
@@ -198,18 +217,47 @@ static const httpd_uri_t calibration_options_uri = {
     .handler = calibration_options_handler,
 };
 
+// Reports the RP2350's current status as JSON, from an SPI transaction
+static esp_err_t status_get_handler(httpd_req_t *req) {
+    add_cors_headers(req);
+
+    spi_status_t status;
+    bool linked = spi_link_get_status(&status);
+
+    // Format JSON response
+    char resp[128];
+    int len = linked
+        ? snprintf(resp, sizeof(resp),
+                   "{\"linked\":true,\"rpm\":%.1f,\"rp2350_uptime_ms\":%lu}", // in JSON
+                   status.rpm, (unsigned long)status.uptime_ms)
+        : snprintf(resp, sizeof(resp), "{\"linked\":false}");
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, resp, len);
+    return ESP_OK;
+}
+
+static const httpd_uri_t status_get_uri = {
+    .uri = "/status",
+    .method = HTTP_GET,
+    .handler = status_get_handler,
+};
+
 void web_server_start(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.max_uri_handlers = 12;
 
     ESP_LOGI(TAG, "starting server on port %d", config.server_port);
     ESP_ERROR_CHECK(httpd_start(&server, &config));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &index_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &upload_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibrate_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &status_js_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_options_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_get_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_options_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &status_get_uri));
 }

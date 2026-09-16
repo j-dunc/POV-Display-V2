@@ -98,10 +98,8 @@ void spi_link_command_loop(void) {
             }
 
             case CMD_GET_STATUS: {
-                float rpm = hall_sensor_get_rpm();
                 spi_status_t status = {
-                    .rpm = rpm,
-                    .spinning = rpm >= MIN_READABLE_RPM,
+                    .rpm = hall_sensor_get_rpm(),
                     .uptime_ms = to_ms_since_boot(get_absolute_time()),
                 };
                 gpio_put(PIN_RP_ESP32_GPIO, 1); // ready with the reply

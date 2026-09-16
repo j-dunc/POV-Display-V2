@@ -1,6 +1,6 @@
 #pragma once
 
-// Blank below this RPM - also the spinning threshold reported over CMD_GET_STATUS
+// Blank below this RPM
 #define MIN_READABLE_RPM 100.0f
 
 /*
