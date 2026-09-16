@@ -66,9 +66,9 @@ void render_init(void) {
 }
 
 /*
-Shows all BCM_BITS planes of one column twice, each pass at half weight, in a
-mirrored (palindrome) plane order e.g. 5 4 3 2 1 0 1 2 3 4 5
-so the centroid is at the centre of the pixel
+Shows all active BCM bit-planes of one column
+twice, each pass at half weight, in a mirrored (palindrome) plane order e.g.
+5 4 3 2 1 0 1 2 3 4 5 so the centroid is at the centre of the pixel
 The exception is the weight-1 plane, which is shown once, full weight
 to ensure there is time for shift and latch overhead during off period
 Descending then ascending to split largest planes as much as possible
@@ -85,14 +85,17 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_cycl
     uint32_t cumulative_cycle = column_start_cycle; // Absolute cycle count marking the end of the current plane's slot
     uint32_t column_deadline_cycle = column_start_cycle + column_dwell_cycles; // absolute cycle the column must not run past
 
+    int bcm_bits = image_source_get_bcm_bits();
+    int bcm_max_level = (1 << bcm_bits) - 1;
+
     for (int half = 0; half < 2; half++) {
-        for (int i = 0; i < BCM_BITS; i++) {
-            int plane = (half == 0) ? (BCM_BITS - 1 - i) : i; // descending then ascending
+        for (int i = 0; i < bcm_bits; i++) {
+            int plane = (half == 0) ? (bcm_bits - 1 - i) : i; // descending then ascending
 
             if (half == 1 && plane == 0) continue; // smallest plane already shown once, full weight, at the end of half 0 so do not repeat
 
             uint32_t weight = 1u << plane; // plane's weight in the level, e.g. plane 5 = bit 5 = 32
-            uint32_t slot_cycles = column_dwell_cycles * weight / BCM_MAX_LEVEL / ((plane == 0) ? 1 : 2); // weight according to plane weight, and half except for smallest plane
+            uint32_t slot_cycles = column_dwell_cycles * weight / bcm_max_level / ((plane == 0) ? 1 : 2); // weight according to plane weight, and half except for smallest plane
             uint32_t on_cycles = (uint32_t)(slot_cycles * max_duty_fraction); // Scale all slots by the same factor keeps the ratio so only affects overall brightness
             cumulative_cycle += slot_cycles;
             uint32_t on_start_cycle = cumulative_cycle - on_cycles; // when this plane's on-time should begin

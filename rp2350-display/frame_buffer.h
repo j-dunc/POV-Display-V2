@@ -9,14 +9,14 @@ Frame buffer for each wing is the 48 LEDs in spatial order,
 the 3 channels of each, and each channels brightness
 */
 
-#define BCM_BITS 6
-#define BCM_MAX_LEVEL ((1 << BCM_BITS) - 1) // 63
+// 8 is the hard ceiling since brightness levels are stored as uint8_t (0-255)
+#define BCM_BITS_MAX 8
 
 void frame_buffer_clear(uint8_t frame[LEDS_PER_WING][CHANNELS]);
 void frame_buffer_set(uint8_t frame[LEDS_PER_WING][CHANNELS], int led, int channel, uint8_t level);
 
 // Transforms spatial frame buffers to temporal word arrays for shifting out,
-// for a single BCM bit-plane (0 = LSB .. BCM_BITS-1 = MSB)
+// for a single BCM bit-plane (0 = LSB .. bcm_bits-1 = MSB)
 void frame_buffer_to_words(const uint8_t lhs_frame[LEDS_PER_WING][CHANNELS],
                             const uint8_t rhs_frame[LEDS_PER_WING][CHANNELS],
                             int plane,

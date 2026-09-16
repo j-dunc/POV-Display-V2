@@ -8,7 +8,7 @@ void frame_buffer_clear(uint8_t frame[LEDS_PER_WING][CHANNELS]) {
             frame[led][ch] = 0;
 }
 
-// Set a specific led and channel to a brightness level (0-63)
+// Set a specific led and channel to a brightness level (0 to the active bcm_max_level)
 void frame_buffer_set(uint8_t frame[LEDS_PER_WING][CHANNELS], int led, int channel, uint8_t level) {
     frame[led][channel] = level;
 }

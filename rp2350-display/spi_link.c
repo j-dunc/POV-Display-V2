@@ -127,7 +127,12 @@ void spi_link_command_loop(void) {
                 if (!spi_read_with_timeout((uint8_t *)&payload, sizeof(payload))) continue;
                 gpio_put(PIN_RP_ESP32_GPIO, 0);
 
-                image_source_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma, payload.dither_enabled != 0.0f);
+                // Clamp values before casting
+                float bcm_bits_f = payload.bcm_bits;
+                if (!(bcm_bits_f >= 1.0f)) bcm_bits_f = 1.0f; // minimum floor is 1, also catches NaN
+                if (bcm_bits_f > (float)BCM_BITS_MAX) bcm_bits_f = (float)BCM_BITS_MAX;
+
+                image_source_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma, payload.dither_enabled != 0.0f, (int)bcm_bits_f);
                 render_set_max_duty_fraction(payload.max_duty_fraction);
                 break;
             }

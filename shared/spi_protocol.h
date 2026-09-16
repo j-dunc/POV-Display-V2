@@ -39,5 +39,6 @@ typedef struct {
     float radial_gamma;
     float max_duty_fraction;
     float dither_enabled; // 1.0 = on, 0.0 = off - float for uniform layout with the rest of this struct
+    float bcm_bits; // BCM bit depth, 1-BCM_BITS_MAX (8) - float for uniform layout, rounded and clamped on receipt
 } calibration_payload_t;
 #define CALIBRATION_PAYLOAD_SIZE (sizeof(calibration_payload_t))

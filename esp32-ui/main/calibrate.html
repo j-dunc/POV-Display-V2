@@ -54,6 +54,10 @@
             Dithering (smooths gradients on scaled-down channels)
         </label>
     </div>
+    <div class="control">
+        <label>BCM bit depth <span id="bcmVal"></span></label>
+        <input type="range" id="bcmInput" min="1" max="8" step="1">
+    </div>
 </div>
 
 <p id="statusEl"></p>
@@ -68,6 +72,8 @@ const radialInput = document.getElementById('radialInput');
 const dutyInput = document.getElementById('dutyInput');
 const dutyUnlockInput = document.getElementById('dutyUnlockInput');
 const ditherInput = document.getElementById('ditherInput');
+const bcmInput = document.getElementById('bcmInput');
+const bcmVal = document.getElementById('bcmVal');
 const DUTY_SAFE_MAX = 0.3;
 const rVal = document.getElementById('rVal');
 const gVal = document.getElementById('gVal');
@@ -86,6 +92,7 @@ function updateLabels() {
     gammaVal.textContent = gammaInput.value;
     radialVal.textContent = radialInput.value;
     dutyVal.textContent = dutyInput.value;
+    bcmVal.textContent = `${bcmInput.value}-bit (${1 << bcmInput.value} levels)`;
 }
 
 // Debounce (so dragging doesn't flood SPI)
@@ -97,8 +104,8 @@ function scheduleSend() {
 
 // Send calibration values via POST endpoint
 async function sendCalibration() {
-    // 7 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled - matches calibration_payload_t
-    const buf = new ArrayBuffer(28);
+    // 8 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled, bcm_bits - matches calibration_payload_t
+    const buf = new ArrayBuffer(32);
     const view = new DataView(buf);
     view.setFloat32(0, parseFloat(rInput.value), true);
     view.setFloat32(4, parseFloat(gInput.value), true);
@@ -107,6 +114,7 @@ async function sendCalibration() {
     view.setFloat32(16, parseFloat(radialInput.value), true);
     view.setFloat32(20, parseFloat(dutyInput.value), true);
     view.setFloat32(24, ditherInput.checked ? 1.0 : 0.0, true);
+    view.setFloat32(28, parseFloat(bcmInput.value), true);
 
     statusEl.textContent = 'sending...';
     try {
@@ -121,7 +129,7 @@ async function sendCalibration() {
     }
 }
 
-for (const input of [rInput, gInput, bInput, gammaInput, radialInput, dutyInput]) {
+for (const input of [rInput, gInput, bInput, gammaInput, radialInput, dutyInput, bcmInput]) {
     input.addEventListener('input', () => {
         updateLabels();
         scheduleSend();
@@ -166,6 +174,7 @@ async function loadCalibration() {
         }
         dutyInput.value = duty;
         ditherInput.checked = view.getFloat32(24, true) !== 0;
+        bcmInput.value = view.getFloat32(28, true);
         updateLabels();
         statusEl.textContent = '';
     } catch (err) {

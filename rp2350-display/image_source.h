@@ -9,15 +9,16 @@
 
 /*
 Contains a 16-cycle word array per BCM bit-plane, per column.
+Sized to max BCM bits per column
 Built before render so no build timing cost at render time.
 Note these are different from LHS to RHS only because bit layout differs per wing.
 Column-Frame mapping is identical between LHS and RHS because column identifies a fixed angular position.
 Difference in wing positions is handled by render loop.
 */
-extern uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS][16];
-extern uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS][16];
+extern uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
+extern uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
 
-// Build test image - red brightness ramps 0 to BCM_MAX_LEVEL once per revolution
+// Build test image - red brightness ramps 0 to the active bcm_max_level once per revolution
 void image_source_build_ramp(void);
 
 // Build test image - a colour wheel stepping through PALETTE in equal bands
@@ -30,8 +31,12 @@ void image_source_build_rainbow(void);
 void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]);
 
 // Updates the live colour calibration (per-channel balance scale, gamma,
-// radial falloff correction, and ordered dithering) and redraws
-void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, bool dither_enabled);
+// radial falloff correction, ordered dithering, and BCM bit depth) and
+// redraws. bcm_bits is clamped to [1, BCM_BITS_MAX]
+void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, bool dither_enabled, int bcm_bits);
 
 // Reads back the current live colour calibration
 void image_source_get_calibration(calibration_payload_t *out);
+
+// Reads back the current active BCM bit depth
+int image_source_get_bcm_bits(void);
