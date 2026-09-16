@@ -51,25 +51,45 @@ static const uint8_t BAYER_16X16[16][16] = {
     {255,127,223, 95,247,119,215, 87,253,125,221, 93,245,117,213, 85},
 };
 
+/*
+Pre-calculated calibration look-up tables rather than calculating per pixel
+  corrected = powf(raw/255, gamma) * scale[ch] * powf((led+1)/LEDS_PER_WING, radial_gamma)
+              \__________________/   \_____________________________________________/
+                 gamma_lut[raw]                    channel_gain[ch][led]
+*/
+static float gamma_lut[256];
+static float channel_gain[CHANNELS][LEDS_PER_WING];
+
+void rebuild_calibration(void) {
+    for (int raw_255 = 0; raw_255 < 256; raw_255++) {
+        gamma_lut[raw_255] = powf(raw_255 / 255.0f, calibration.gamma); // Cout = Cin^Gamma
+    }
+
+    int bcm_max_level = (1 << calibration.bcm_bits) - 1;
+    for (int led = 0; led < LEDS_PER_WING; led++) {
+        // Use LED + 1 so the inner LED doesn't turn off - otherwise it would 0^anything = 0
+        float radial_norm = (float)(led + 1) / LEDS_PER_WING; // > 0 at centre, 1 at tip
+        // Doesn't depend on channel, so compute once per led rather than once per (ch, led)
+        float radial_factor = powf(radial_norm, calibration.radial_gamma) * bcm_max_level;
+
+        for (int ch = 0; ch < CHANNELS; ch++) {
+            channel_gain[ch][led] = calibration.scale[ch] * radial_factor;
+        }
+    }
+}
+
 // Converts one raw 0-255 channel value, at a given radial LED position and
 // column, to a 0-bcm_max_level level - applying gamma, channel, and radial balance
 // and bayer dithering
 static uint8_t apply_calibration(uint8_t raw_255, int channel, int led, int col) {
-    // Apply gamma and channel scale
-    float normalized = raw_255 / 255.0f;
-    float corrected = powf(normalized, calibration.gamma) * calibration.scale[channel]; // Cout = Cin^Gamma
-
-    // Apply radial gamma
-    // Use LED + 1 so the inner LED doesn't turn off - otherwise it would 0^anything = 0
-    float radial_norm = (float)(led + 1) / LEDS_PER_WING; // > 0 at centre, 1 at tip
-    corrected *= powf(radial_norm, calibration.radial_gamma);
+    // Gamma, channel scale and radial gamma are all accounted for in these two lookups
+    float level_f = gamma_lut[raw_255] * channel_gain[channel][led];
 
     int bcm_max_level = (1 << calibration.bcm_bits) - 1;
 
     // Ordered dithering:
     // Instead of always rounding to nearest int, rounding threshold varies
     // per LED (given by matrix) preventing banding
-    float level_f = corrected * bcm_max_level;
     int base = (int)level_f; // truncate
     float frac = level_f - base;
     int level;
@@ -109,6 +129,8 @@ void image_source_set_calibration(float r_scale, float g_scale, float b_scale, f
     if (bcm_bits < 1) bcm_bits = 1; // clamp
     if (bcm_bits > BCM_BITS_MAX) bcm_bits = BCM_BITS_MAX;
     calibration.bcm_bits = bcm_bits;
+
+    rebuild_calibration();
 
     // Reapply to whatever is actually currently on screen
     switch (current_mode) {
@@ -163,9 +185,7 @@ void image_source_build_channel_ramp(int channel) {
         }
 
         // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-        for (int plane = 0; plane < calibration.bcm_bits; plane++) {
-            frame_buffer_to_words(frame, frame, plane, image_lhs_words[col][plane], image_rhs_words[col][plane]);
-        }
+        frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
     }
 }
 
@@ -189,9 +209,7 @@ void image_source_build_gray_ramp(void) {
         }
 
         // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-        for (int plane = 0; plane < calibration.bcm_bits; plane++) {
-            frame_buffer_to_words(frame, frame, plane, image_lhs_words[col][plane], image_rhs_words[col][plane]);
-        }
+        frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
     }
 }
 
@@ -210,9 +228,7 @@ void image_source_build_radial_white(void) {
 
     for (int col = 0; col < NUM_COLUMNS; col++) {
         // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-        for (int plane = 0; plane < calibration.bcm_bits; plane++) {
-            frame_buffer_to_words(frame, frame, plane, image_lhs_words[col][plane], image_rhs_words[col][plane]);
-        }
+        frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
     }
 }
 
@@ -261,9 +277,7 @@ void image_source_build_rainbow(void) {
         }
 
         // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-        for (int plane = 0; plane < calibration.bcm_bits; plane++) {
-            frame_buffer_to_words(frame, frame, plane, image_lhs_words[col][plane], image_rhs_words[col][plane]);
-        }
+        frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
     }
 }
 
@@ -299,7 +313,5 @@ void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]
     }
 
     // Encodes frame to different bit layouts for each wing for shifting, one per BCM bit-plane
-    for (int plane = 0; plane < calibration.bcm_bits; plane++) {
-        frame_buffer_to_words(frame, frame, plane, image_lhs_words[col][plane], image_rhs_words[col][plane]);
-    }
+    frame_buffer_to_planes(frame, frame, calibration.bcm_bits, image_lhs_words[col], image_rhs_words[col]);
 }

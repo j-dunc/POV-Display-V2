@@ -18,6 +18,10 @@ Difference in wing positions is handled by render loop.
 extern uint16_t image_lhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
 extern uint16_t image_rhs_words[NUM_COLUMNS][BCM_BITS_MAX][16];
 
+// (Re)builds the calibration lookup tables from the current calibration values.
+// Reduces per frame computational cost
+void rebuild_calibration(void);
+
 // Test pattern - one channel (RED/GREEN/BLUE) ramps 0 to full scale
 void image_source_build_channel_ramp(int channel);
 

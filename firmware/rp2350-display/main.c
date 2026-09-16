@@ -5,6 +5,8 @@
 #include "led_shift.h"
 #include "hall_sensor.h"
 #include "led_map.h"
+#include "frame_buffer.h"
+#include "image_source.h"
 #include "render.h"
 #include "spi_link.h"
 
@@ -18,6 +20,8 @@ int main(void)
     led_shift_init();
     hall_sensor_init();
     build_led_map();
+    frame_buffer_init();
+    rebuild_calibration();
     render_init();
 
     while (true) {
