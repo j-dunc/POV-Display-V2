@@ -1,8 +1,8 @@
 ##############################################################################
 # RP2350 / Raspberry Pi Pico SDK (rp2350-display)
 ##############################################################################
-rp2350-display/build/
-rp2350-display/build*/
+firmware/rp2350-display/build/
+firmware/rp2350-display/build*/
 
 # Pico SDK / picotool artifacts
 *.uf2
@@ -17,13 +17,13 @@ elf2uf2/
 ##############################################################################
 # ESP-IDF (esp32-ui)
 ##############################################################################
-esp32-ui/build/
-esp32-ui/managed_components/
-esp32-ui/dependencies.lock
-esp32-ui/sdkconfig
-esp32-ui/sdkconfig.old
-esp32-ui/**/*.d
-esp32-ui/.mypy_cache/
+firmware/esp32-ui/build/
+firmware/esp32-ui/managed_components/
+firmware/esp32-ui/dependencies.lock
+firmware/esp32-ui/sdkconfig
+firmware/esp32-ui/sdkconfig.old
+firmware/esp32-ui/**/*.d
+firmware/esp32-ui/.mypy_cache/
 
 # ESP-IDF size/log artifacts
 *.map
