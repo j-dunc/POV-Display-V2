@@ -7,7 +7,7 @@
 #include "pico/stdlib.h"
 
 // Bench testing aid e.g. for testing over USB with no motor spinning
-#define SIMULATE_HALL 1 // 1 = simulate, 0 = use hall effect sensors
+#define SIMULATE_HALL 0 // 1 = simulate, 0 = use hall effect sensors
 #define SIM_RPM 1250.0f // matches max RPM
 
 #if SIMULATE_HALL
@@ -34,8 +34,15 @@ static volatile int last_edge_sensor = -1; // Which sensor triggered most recent
 static volatile uint64_t last_edge_timestamp_us = 0; // of either sensor
 static volatile uint32_t last_half_period_us = 0; // Time since the other sensor last triggered
 
+// Debounce floor - real half periods are longer at spinning RPMs
+#define MIN_EDGE_INTERVAL_US 1000
+
 static void hall_irq_handler(uint gpio, uint32_t events) {
     uint64_t now = time_us_64();
+
+    // Debounce
+    if (has_any_trigger && (now - last_edge_timestamp_us) < MIN_EDGE_INTERVAL_US) return;
+
     int sensor = (gpio == PIN_HE_0) ? 0 : 1; // Which sensor triggered?
 
     // Track time since the other sensor triggered
