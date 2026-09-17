@@ -150,7 +150,7 @@ void render_update(void) {
         uint32_t now_cycle = DWT->CYCCNT;
         int32_t schedule_error = (int32_t)(now_cycle - next_column_start_cycle);
         bool new_revolution = last_col_rhs < 0 // Display blanked - invalid RPM or startup
-            || col_rhs < last_col_rhs; // Full revolution completed
+            || (last_col_rhs - col_rhs) > (NUM_COLUMNS / 2); // Full revolution completed -  large drop i.e. 297->0
         if (new_revolution
             || schedule_error > (int32_t)column_dwell_cycles // Grid has fallen more than a column behind schedule
             || schedule_error < -(int32_t)column_dwell_cycles) { // Grid is ahead by more than a column
