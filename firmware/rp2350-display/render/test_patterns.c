@@ -23,7 +23,7 @@ void test_pattern_build_channel_ramp(int channel) {
         }
 
         // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, frame, bcm_bits);
+        frame_buffer_publish_column(col, frame, bcm_bits);
     }
 }
 
@@ -48,7 +48,7 @@ void test_pattern_build_gray_ramp(void) {
         }
 
         // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, frame, bcm_bits);
+        frame_buffer_publish_column(col, frame, bcm_bits);
     }
 }
 
@@ -69,7 +69,7 @@ void test_pattern_build_radial_white(void) {
 
     for (int col = 0; col < NUM_COLUMNS; col++) {
         // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, frame, bcm_bits);
+        frame_buffer_publish_column(col, frame, bcm_bits);
     }
 }
 
@@ -119,6 +119,6 @@ void test_pattern_build_rainbow(void) {
         }
 
         // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, frame, bcm_bits);
+        frame_buffer_publish_column(col, frame, bcm_bits);
     }
 }

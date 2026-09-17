@@ -41,12 +41,13 @@ void frame_buffer_set(uint8_t frame[LEDS_PER_WING][CHANNELS], int led, int chann
     frame[led][channel] = level;
 }
 
-// Transforms spatial frame buffers to temporal word arrays for shifting out, for every
+// Transforms one spatial frame into temporal word arrays for shifting out, for every
 // BCM bit-plane (0 = LSB .. bcm_bits-1 = MSB) in one pass over the frame - reusing
 // the precomputed shift_positions lookup across all planes instead of recomputing it once
 // per plane
-static void frame_buffer_to_planes(const uint8_t lhs_frame[LEDS_PER_WING][CHANNELS],
-                                    const uint8_t rhs_frame[LEDS_PER_WING][CHANNELS],
+// LHS and RHS always show the same spatial column - don't need seperate frame buffers
+// But do need seperate word arrays due to the difference in chip wiring
+static void frame_buffer_to_planes(const uint8_t frame[LEDS_PER_WING][CHANNELS],
                                     int bcm_bits,
                                     uint16_t lhs_words[][16], uint16_t rhs_words[][16]) {
     // Set all planes word arrays to 0s so we can set bits with OR
@@ -61,15 +62,12 @@ static void frame_buffer_to_planes(const uint8_t lhs_frame[LEDS_PER_WING][CHANNE
     for (int led = 0; led < LEDS_PER_WING; led++) {
         for (int ch = 0; ch < CHANNELS; ch++) {
             const shift_position_t *entry = &shift_positions[led][ch];
-            uint8_t lhs_level = lhs_frame[led][ch];
-            uint8_t rhs_level = rhs_frame[led][ch];
+            uint8_t level = frame[led][ch];
 
             // Set words for each plane
             for (int plane = 0; plane < bcm_bits; plane++) {
-                if ((lhs_level >> plane) & 1) { // Check if brightness bit for this bitplane is set
+                if ((level >> plane) & 1) { // Check if brightness bit for this bitplane is set
                     lhs_words[plane][entry->cycle] |= entry->lhs_mask; // Use mask to set bit
-                }
-                if ((rhs_level >> plane) & 1) {
                     rhs_words[plane][entry->cycle] |= entry->rhs_mask;
                 }
             }
@@ -99,9 +97,8 @@ static int columns_written_count = 0;
 // So buffers can be swapped when rev has finished
 static volatile bool frame_ready = false;
 
-void frame_buffer_publish_column(int col, const uint8_t lhs_frame[LEDS_PER_WING][CHANNELS],
-                                  const uint8_t rhs_frame[LEDS_PER_WING][CHANNELS], int bcm_bits) {
-    frame_buffer_to_planes(lhs_frame, rhs_frame, bcm_bits, back_lhs_words[col], back_rhs_words[col]);
+void frame_buffer_publish_column(int col, const uint8_t frame[LEDS_PER_WING][CHANNELS], int bcm_bits) {
+    frame_buffer_to_planes(frame, bcm_bits, back_lhs_words[col], back_rhs_words[col]);
 
     if (!column_written[col]) {
         column_written[col] = true;

@@ -33,10 +33,9 @@ frame_buffer_swap_pending() then swaps it in for render.c to pick up.
 extern uint16_t (*image_lhs_words)[BCM_BITS_MAX][16]; // pointer to one column's frame buffer of 16-bit words
 extern uint16_t (*image_rhs_words)[BCM_BITS_MAX][16];
 
-// Encodes one column's spatial frame into temporal shift words and stages it in the
-// back buffer, marking a full frame ready to swap in once ready
-void frame_buffer_publish_column(int col, const uint8_t lhs_frame[LEDS_PER_WING][CHANNELS],
-                                  const uint8_t rhs_frame[LEDS_PER_WING][CHANNELS], int bcm_bits);
+// Encodes one column's spatial frame into temporal shift words for both wings and stages
+// it in the back buffer, marking a full frame ready to swap in once ready
+void frame_buffer_publish_column(int col, const uint8_t frame[LEDS_PER_WING][CHANNELS], int bcm_bits);
 
 // Swaps the front/back buffers if a full frame has finished landing in the back
 // buffer since the last swap. Called by render.c once per rev

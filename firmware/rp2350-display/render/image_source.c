@@ -202,5 +202,5 @@ void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]
     }
 
     // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-    frame_buffer_publish_column(col, frame, frame, calibration.bcm_bits);
+    frame_buffer_publish_column(col, frame, calibration.bcm_bits);
 }
