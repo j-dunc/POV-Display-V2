@@ -25,11 +25,6 @@ float render_get_max_duty_fraction(void) {
     return max_duty_fraction;
 }
 
-// Bench testing aid e.g. for logic analyser use
-// Simulates hall effect rpm, period, and angle measurements
-#define SIMULATE_HALL 0 // 1 = simulate, 0 = use hall effect sensors
-#define SIM_RPM 1250.0f // matches max RPM
-
 // Which RHS column is currently on display, -1 if display is blanked
 static int last_col_rhs = -1;
 
@@ -39,10 +34,6 @@ static uint32_t next_column_start_cycle;
 // System clock frequency in Hz
 // Needed to busy wait in cycles instead of using hardware timer which has 1 us resolution - too small
 static uint32_t clk_hz;
-
-#if SIMULATE_HALL
-static uint64_t sim_start_us;
-#endif
 
 // Busy-waits until DWT->CYCCNT reaches (or has already passed) target_cycle
 static inline void wait_until_cycle(uint32_t target_cycle) {
@@ -65,9 +56,6 @@ void render_init(void) {
     DWT->CYCCNT = 0; // Reset cycle counter
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk; // Enable cycle counter
 
-#if SIMULATE_HALL
-    sim_start_us = time_us_64();
-#endif
     // PUT DEFAULT PATTERN BUILD HERE
     // No default pattern - blank until image sent by ESP32
 }
@@ -133,15 +121,8 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_cycl
 void render_update(void) {
     uint64_t now = time_us_64();
 
-#if SIMULATE_HALL
-    // Synthetic angle/period in place of the real hall sensors
-    uint32_t period_us = (uint32_t)(60000000.0f / SIM_RPM);
-    float angle = (float)((now - sim_start_us) % period_us) * (360.0f / (float)period_us);
-    float rpm = SIM_RPM;
-#else
     float angle = hall_sensor_get_angle_deg(now); // 0 deg = HE_0 = RHS wing tip
     float rpm = hall_sensor_get_rpm();
-#endif
 
     // Blank if invalid state - no angle measured or rpm too low
     if (angle < 0.0f || rpm < MIN_READABLE_RPM) {
@@ -160,11 +141,7 @@ void render_update(void) {
 
     // Start new column
     if (col_rhs != last_col_rhs) {
-#if SIMULATE_HALL
-        uint32_t revolution_us = period_us;
-#else
         uint32_t revolution_us = hall_sensor_get_period_us();
-#endif
         // Divide into columns in cycles rather than whole microseconds
         uint32_t revolution_cycles = (uint32_t)(((uint64_t)revolution_us * clk_hz) / 1000000); // Intermediate must cast to 64 bit to avoid overflow
         uint32_t column_dwell_cycles = revolution_cycles / NUM_COLUMNS;

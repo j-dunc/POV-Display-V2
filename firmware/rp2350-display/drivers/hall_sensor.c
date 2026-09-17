@@ -6,6 +6,29 @@
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 
+// Bench testing aid e.g. for testing over USB with no motor spinning
+#define SIMULATE_HALL 1 // 1 = simulate, 0 = use hall effect sensors
+#define SIM_RPM 1250.0f // matches max RPM
+
+#if SIMULATE_HALL
+
+static uint64_t sim_start_us;
+
+void hall_sensor_init(void) {
+    sim_start_us = time_us_64();
+}
+
+uint32_t hall_sensor_get_period_us(void) {
+    return (uint32_t)(60000000.0f / SIM_RPM);
+}
+
+float hall_sensor_get_angle_deg(uint64_t now_us) {
+    uint32_t period_us = hall_sensor_get_period_us();
+    return (float)((now_us - sim_start_us) % period_us) / (float)period_us * 360.0f;
+}
+
+#else
+
 static volatile bool has_any_trigger = false; // Have any sensors been triggered yet
 static volatile int last_edge_sensor = -1; // Which sensor triggered most recently - -1 if unknown
 static volatile uint64_t last_edge_timestamp_us = 0; // of either sensor
@@ -68,6 +91,8 @@ uint32_t hall_sensor_get_period_us(void) {
 
     return last_half_period_us * 2; // half-revolution -> full revolution
 }
+
+#endif
 
 float hall_sensor_get_rpm(void) {
     uint32_t period = hall_sensor_get_period_us();
