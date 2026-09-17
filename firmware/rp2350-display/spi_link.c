@@ -12,45 +12,62 @@
 
 #define SPI_TRANSFER_TIMEOUT_US 50000
 
+
 // SPI functions with timeout so failed transfers do not hang core
 // Returns false if timeout occured
+// Also controls ready line handshake
 static bool spi_read_with_timeout(uint8_t *dst, size_t len) {
     absolute_time_t deadline = make_timeout_time_us(SPI_TRANSFER_TIMEOUT_US);
+    gpio_put(PIN_RP_ESP32_GPIO, 1); // ready to receive
 
     for (size_t i = 0; i < len; i++) {
         spi_get_hw(spi1)->dr = 0; // Write dummy tx byte to data register
         while (!spi_is_readable(spi1)) { // Check if transfer complete
             if (time_reached(deadline)) {
-                spi_link_init(); // reset rather than leave core 1 hanging
+                spi_link_init(); // reset rather than leave core 1 hanging (also lowers ready)
                 return false;
             }
         }
         dst[i] = (uint8_t)spi_get_hw(spi1)->dr; // Read byte
     }
+
+    gpio_put(PIN_RP_ESP32_GPIO, 0); // busy
     return true;
 }
 
+// Fills FIFO before raising ready to ensure no garbage is clocked out
 static bool spi_write_with_timeout(const uint8_t *src, size_t len) {
     absolute_time_t deadline = make_timeout_time_us(SPI_TRANSFER_TIMEOUT_US);
 
+    size_t queued = 0;
+    // Loop until all sent or FIFO full
+    while (queued < len && spi_is_writable(spi1)) {
+        spi_get_hw(spi1)->dr = src[queued++];
+    }
+    gpio_put(PIN_RP_ESP32_GPIO, 1); // ready with the reply
+
     for (size_t i = 0; i < len; i++) {
-        while (!spi_is_writable(spi1)) {
-            if (time_reached(deadline)) {
-                spi_link_init();
-                return false;
+        if (i >= queued) { // anything beyond the initial burst still needs pacing
+            while (!spi_is_writable(spi1)) {
+                if (time_reached(deadline)) {
+                    spi_link_init(); // also lowers ready
+                    return false;
+                }
             }
+            spi_get_hw(spi1)->dr = src[i]; // Write byte
         }
-        spi_get_hw(spi1)->dr = src[i]; // Write byte
 
         // Discard unwanted rx bytes
         while (!spi_is_readable(spi1)) {
             if (time_reached(deadline)) {
-                spi_link_init();
+                spi_link_init(); // also lowers ready
                 return false;
             }
         }
         (void)spi_get_hw(spi1)->dr;
     }
+
+    gpio_put(PIN_RP_ESP32_GPIO, 0); // busy
     return true;
 }
 
@@ -82,18 +99,14 @@ void spi_link_command_loop(void) {
 
         // Read CMD from ESP32
         uint8_t cmd;
-        gpio_put(PIN_RP_ESP32_GPIO, 1); // ready for a command
         if (!spi_read_with_timeout(&cmd, 1)) continue;
-        gpio_put(PIN_RP_ESP32_GPIO, 0); // busy - handling it
 
         // Carry out CMD
         switch (cmd) {
             case CMD_PING: {
                 // Echo the command byte back
                 uint8_t resp = CMD_PING;
-                gpio_put(PIN_RP_ESP32_GPIO, 1); // ready with the reply
                 if (!spi_write_with_timeout(&resp, 1)) continue;
-                gpio_put(PIN_RP_ESP32_GPIO, 0);
                 break;
             }
 
@@ -102,17 +115,13 @@ void spi_link_command_loop(void) {
                     .rpm = hall_sensor_get_rpm(),
                     .uptime_ms = to_ms_since_boot(get_absolute_time()),
                 };
-                gpio_put(PIN_RP_ESP32_GPIO, 1); // ready with the reply
                 if (!spi_write_with_timeout((uint8_t *)&status, sizeof(status))) continue; // Note pointer to spi_status_t type is cast to pointer to raw bytes
-                gpio_put(PIN_RP_ESP32_GPIO, 0);
                 break;
             }
 
             case CMD_PUSH_COLUMN: {
                 uint8_t payload[FRAME_COLUMN_PAYLOAD_SIZE];
-                gpio_put(PIN_RP_ESP32_GPIO, 1); // ready for the column payload
                 if (!spi_read_with_timeout(payload, sizeof(payload))) continue;
-                gpio_put(PIN_RP_ESP32_GPIO, 0);
 
                 int col = payload[0] | (payload[1] << 8); // reassemble bytes (little-endian)
                 if (col >= 0 && col < NUM_COLUMNS) {
@@ -123,9 +132,7 @@ void spi_link_command_loop(void) {
 
             case CMD_SET_CALIBRATION: {
                 calibration_payload_t payload;
-                gpio_put(PIN_RP_ESP32_GPIO, 1); // ready for the calibration payload
                 if (!spi_read_with_timeout((uint8_t *)&payload, sizeof(payload))) continue;
-                gpio_put(PIN_RP_ESP32_GPIO, 0);
 
                 // Clamp values before casting
                 float bcm_bits_f = payload.bcm_bits;
@@ -141,17 +148,13 @@ void spi_link_command_loop(void) {
                 calibration_payload_t payload;
                 image_source_get_calibration(&payload);
                 payload.max_duty_fraction = render_get_max_duty_fraction();
-                gpio_put(PIN_RP_ESP32_GPIO, 1); // ready with the reply
                 if (!spi_write_with_timeout((uint8_t *)&payload, sizeof(payload))) continue;
-                gpio_put(PIN_RP_ESP32_GPIO, 0);
                 break;
             }
 
             case CMD_SHOW_TEST_PATTERN: {
                 uint8_t pattern_id;
-                gpio_put(PIN_RP_ESP32_GPIO, 1); // ready for the pattern id payload
                 if (!spi_read_with_timeout(&pattern_id, TEST_PATTERN_PAYLOAD_SIZE)) continue;
-                gpio_put(PIN_RP_ESP32_GPIO, 0);
 
                 image_source_show_test_pattern(pattern_id);
                 break;
