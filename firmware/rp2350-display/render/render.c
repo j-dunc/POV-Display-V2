@@ -18,6 +18,15 @@
 // Which RHS column is currently on display, -1 if display is blanked
 static int last_col_rhs = -1;
 
+static int revs_per_frame = DEFAULT_REVS_PER_FRAME;
+static int revolutions_since_swap = 0;
+
+void render_set_revs_per_frame(int new_revs_per_frame) {
+    if (new_revs_per_frame < 1) new_revs_per_frame = 1;
+    revs_per_frame = new_revs_per_frame;
+    revolutions_since_swap = 0; // restart the count so the change takes effect cleanly
+}
+
 // Absolute cycle at which the next column is scheduled to start
 static uint32_t next_column_start_cycle;
 
@@ -147,9 +156,12 @@ void render_update(void) {
             next_column_start_cycle = now_cycle;
         }
 
-        // Only swap in a newly finished frame at a revolution boundary
+        // Hold each animation frame for revs_per_frame whole revolutions before swapping
         if (new_revolution) {
-            frame_buffer_swap_pending();
+            revolutions_since_swap++;
+            if (revolutions_since_swap >= revs_per_frame) {
+                if (frame_buffer_swap_pending()) revolutions_since_swap = 0; // Only restart count once a frame is actually swapped in - overrun just = one extra rev on frame
+            }
         }
 
         show_column_bcm(col_lhs, col_rhs, column_dwell_cycles, next_column_start_cycle);

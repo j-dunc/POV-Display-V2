@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "hardware/sync.h"
+
 // Stores the entire frame, shift word array per BCM bit-plane per column. Sized to BCM_BITS_MAX
 // only planes 0..bcm_bits-1 are meaningful at any time
 // Double buffered so render.c is never reading a half-built frame: frame_*_words is
@@ -29,7 +31,13 @@ static int columns_written_count = 0;
 // So buffers can be swapped when rev has finished
 static volatile bool frame_ready = false;
 
+bool frame_buffer_back_buffer_free(void) {
+    return !frame_ready;
+}
+
 void frame_buffer_publish_column(int col, const uint8_t column_levels[LEDS_PER_WING][CHANNELS], int bcm_bits) {
+    __dmb(); // memory barrier - keeps cross-core memory accesses in order here
+
     // Encode this column's levels into column_words, staged into this column's slot of the back frame
     shift_encoder_encode(column_levels, bcm_bits, back_frame_lhs_words[col], back_frame_rhs_words[col]);
 
@@ -38,6 +46,7 @@ void frame_buffer_publish_column(int col, const uint8_t column_levels[LEDS_PER_W
         columns_written_count++;
 
         if (columns_written_count == NUM_COLUMNS) {
+            __dmb(); // memory barrier - keeps cross-core memory accesses in order here
             frame_ready = true;
             columns_written_count = 0;
             memset(column_written, 0, sizeof(column_written));
@@ -45,8 +54,9 @@ void frame_buffer_publish_column(int col, const uint8_t column_levels[LEDS_PER_W
     }
 }
 
-void frame_buffer_swap_pending(void) {
-    if (!frame_ready) return;
+bool frame_buffer_swap_pending(void) {
+    if (!frame_ready) return false;
+    __dmb(); // memory barrier - keeps cross-core memory accesses in order here
 
     // Swap pointers
     uint16_t (*swap_lhs)[BCM_BITS_MAX][16] = frame_lhs_words; // temp stash pointer to swap
@@ -56,5 +66,7 @@ void frame_buffer_swap_pending(void) {
     back_frame_lhs_words = swap_lhs;
     back_frame_rhs_words = swap_rhs;
 
+    __dmb(); // memory barrier - keeps cross-core memory accesses in order here
     frame_ready = false;
+    return true;
 }

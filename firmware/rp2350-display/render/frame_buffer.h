@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "shift_encoder.h"
@@ -14,6 +15,9 @@ extern uint16_t (*frame_rhs_words)[BCM_BITS_MAX][16];
 // back buffer, marking a full frame ready to swap in once every column has landed
 void frame_buffer_publish_column(int col, const uint8_t column_levels[LEDS_PER_WING][CHANNELS], int bcm_bits);
 
+// False while a finished frame is still waiting to be swapped in
+bool frame_buffer_back_buffer_free(void);
+
 // Swaps the front/back buffers if a full frame has finished landing in the back
-// buffer since the last swap. Called by render.c once per rev
-void frame_buffer_swap_pending(void);
+// buffer since the last swap. Returns true if a swap actually happened
+bool frame_buffer_swap_pending(void);

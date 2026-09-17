@@ -45,6 +45,8 @@ add_executable(rp2350-display
     render/led_map.c
     render/image_source.c
     render/test_patterns.c
+    render/animation.c
+    render/animation_store.c
     render/render.c)
 
 pico_generate_pio_header(rp2350-display ${CMAKE_CURRENT_LIST_DIR}/drivers/led_shift.pio)
@@ -62,8 +64,12 @@ target_link_libraries(rp2350-display
         hardware_pio
         hardware_dma
         hardware_spi
+        hardware_flash
         pico_multicore
         cmsis_core)
+
+# PCB has 16MB flash
+target_compile_definitions(rp2350-display PRIVATE PICO_FLASH_SIZE_BYTES=16777216)
 # Add the standard include files to the build
 target_include_directories(rp2350-display PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}

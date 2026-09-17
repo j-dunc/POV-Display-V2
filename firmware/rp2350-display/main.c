@@ -11,14 +11,11 @@
 #include "shift_encoder.h"
 #include "image_source.h"
 #include "render.h"
-#include "spi_link.h"
+#include "animation.h"
 
 int main(void)
 {
     stdio_init_all();
-
-    // Blocking loop on core 1, handling SPI communication with ESP32
-    multicore_launch_core1(spi_link_command_loop);
 
     led_shift_init();
     hall_sensor_init();
@@ -26,6 +23,10 @@ int main(void)
     shift_encoder_init();
     rebuild_calibration();
     render_init();
+    animation_init();
+
+    // TEMPORARY: animation playback in place of the SPI link - no ESP32 involved
+    multicore_launch_core1(animation_task);
 
     while (true) {
         render_update();
