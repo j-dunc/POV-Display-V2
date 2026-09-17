@@ -1,3 +1,6 @@
+// web_server: HTTP server serving the upload/calibration pages and their
+// APIs, relaying frame/calibration/status requests to the RP2350 over SPI
+
 #include "web_server.h"
 
 #include "esp_http_server.h"

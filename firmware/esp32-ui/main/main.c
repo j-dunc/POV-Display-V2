@@ -1,3 +1,6 @@
+// main: entry point. Starts the SoftAP + HTTP server,
+// then initialises the SPI link to the RP2350
+
 #include "nvs_flash.h"
 
 #include "spi_link.h"

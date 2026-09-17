@@ -1,3 +1,7 @@
+// image_source: single source of truth for colour calibration and whatever
+// image is currently displayed (uploaded frame or test pattern); converts
+// raw RGB into a column's calibrated levels
+
 #include "image_source.h"
 #include "frame_buffer.h"
 #include "test_patterns.h"
@@ -192,15 +196,13 @@ void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]
     memmove(last_frame[col], rgb, sizeof(last_frame[col])); // Not memcpy as source and destination may be same if called from set_calibration
     current_mode = IMAGE_SOURCE_UPLOADED_FRAME;
 
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
-    frame_buffer_clear(frame);
-
+    uint8_t column_levels[LEDS_PER_WING][CHANNELS]; // One column's post calibration LED brightness array
     for (int led = 0; led < LEDS_PER_WING; led++) {
         for (int ch = 0; ch < CHANNELS; ch++) {
-            frame_buffer_set(frame, led, ch, image_source_apply_calibration(rgb[led][ch], ch, led, col));
+            column_levels[led][ch] = image_source_apply_calibration(rgb[led][ch], ch, led, col);
         }
     }
 
     // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-    frame_buffer_publish_column(col, frame, calibration.bcm_bits);
+    frame_buffer_publish_column(col, column_levels, calibration.bcm_bits);
 }

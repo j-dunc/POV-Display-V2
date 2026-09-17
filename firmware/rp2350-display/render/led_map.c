@@ -1,3 +1,6 @@
+// led_map: maps each LED's spatial position (led, channel) to its physical
+// (chip, pin) coordinate on the LED driver chips
+
 #include "led_map.h"
 
 /*

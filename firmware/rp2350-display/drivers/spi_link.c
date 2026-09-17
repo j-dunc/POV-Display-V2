@@ -1,3 +1,6 @@
+// spi_link: RP2350 side of the RP2350<->ESP32 SPI link. Runs the SPI slave
+// command loop (ready-line handshake, command dispatch) on core 1
+
 #include "spi_link.h"
 #include "pins.h"
 #include "hall_sensor.h"

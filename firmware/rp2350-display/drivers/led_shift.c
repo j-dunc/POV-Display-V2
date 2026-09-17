@@ -1,3 +1,6 @@
+// led_shift: PIO + DMA driver that shifts one BCM bit-plane's 16-cycle shift word
+// arrays out to the LED driver chips, for both wings
+
 #include "led_shift.h"
 #include "led_shift.pio.h"
 #include "pins.h"
@@ -102,11 +105,11 @@ void led_shift_init(void) {
     rhs_dma = init_dma_channel(rhs_pio, rhs_sm);
 }
 
-void led_shift_start(const uint16_t lhs_words[16], const uint16_t rhs_words[16]) {
-    // Set DMA source as words array with length of 16 - send both LHS and RHS in parallel.
+void led_shift_start(const uint16_t lhs_plane_words[16], const uint16_t rhs_plane_words[16]) {
+    // Set DMA source as plane_words array with length of 16 - send both LHS and RHS in parallel.
     // Returns immediately - the DMA/PIO shift itself runs in the background from here
-    dma_channel_transfer_from_buffer_now(lhs_dma, lhs_words, 16);
-    dma_channel_transfer_from_buffer_now(rhs_dma, rhs_words, 16);
+    dma_channel_transfer_from_buffer_now(lhs_dma, lhs_plane_words, 16);
+    dma_channel_transfer_from_buffer_now(rhs_dma, rhs_plane_words, 16);
 }
 
 void led_shift_finish(void) {

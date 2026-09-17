@@ -1,93 +1,25 @@
+// frame_buffer: double-buffered storage for one full frame (all columns, both
+// wings) of encoded shift words. Tracks when a full frame has landed and
+// swaps it in for render.c to pick up
+
 #include "frame_buffer.h"
-#include "pins.h"
 
 #include <stdbool.h>
 #include <string.h>
 
-// Precomputed per (led, channel): which shift cycle its bit lands in, and its bit
-// mask within that cycle's word for each wing. Bit position within word for a given
-// chip differs by wing, so lhs_mask and rhs_mask are tracked separately.
-typedef struct {
-    uint8_t cycle;
-    uint16_t lhs_mask;
-    uint16_t rhs_mask;
-} shift_position_t;
-
-static shift_position_t shift_positions[LEDS_PER_WING][CHANNELS]; // Lookup table
-
-void frame_buffer_init(void) {
-    for (int led = 0; led < LEDS_PER_WING; led++) {
-        for (int ch = 0; ch < CHANNELS; ch++) {
-            led_coord pos = led_map[led][ch];
-
-            /* First bit shifted ends up on last shift register stage after 16 clocks
-            so pin n is set on clock cycle 15 - n */
-            shift_positions[led][ch].cycle = (uint8_t)(15 - pos.pin);
-            shift_positions[led][ch].lhs_mask = (uint16_t)(1u << LHS_DATA_PINS[pos.chip]); // Bit pos of chip in word
-            shift_positions[led][ch].rhs_mask = (uint16_t)(1u << pos.chip); // For RHS, bit n corresponds to chip n
-        }
-    }
-}
-
-// Loop through leds and channels and set all to off
-void frame_buffer_clear(uint8_t frame[LEDS_PER_WING][CHANNELS]) {
-    for (int led = 0; led < LEDS_PER_WING; led++)
-        for (int ch = 0; ch < CHANNELS; ch++)
-            frame[led][ch] = 0;
-}
-
-// Set a specific led and channel to a brightness level (0 to the active bcm_max_level)
-void frame_buffer_set(uint8_t frame[LEDS_PER_WING][CHANNELS], int led, int channel, uint8_t level) {
-    frame[led][channel] = level;
-}
-
-// Transforms one spatial frame into temporal word arrays for shifting out, for every
-// BCM bit-plane (0 = LSB .. bcm_bits-1 = MSB) in one pass over the frame - reusing
-// the precomputed shift_positions lookup across all planes instead of recomputing it once
-// per plane
-// LHS and RHS always show the same spatial column - don't need seperate frame buffers
-// But do need seperate word arrays due to the difference in chip wiring
-static void frame_buffer_to_planes(const uint8_t frame[LEDS_PER_WING][CHANNELS],
-                                    int bcm_bits,
-                                    uint16_t lhs_words[][16], uint16_t rhs_words[][16]) {
-    // Set all planes word arrays to 0s so we can set bits with OR
-    for (int plane = 0; plane < bcm_bits; plane++) {
-        for (int i = 0; i < 16; i++) {
-            lhs_words[plane][i] = 0;
-            rhs_words[plane][i] = 0;
-        }
-    }
-
-    // Look up each channel/LEDs cycle and mask
-    for (int led = 0; led < LEDS_PER_WING; led++) {
-        for (int ch = 0; ch < CHANNELS; ch++) {
-            const shift_position_t *entry = &shift_positions[led][ch];
-            uint8_t level = frame[led][ch];
-
-            // Set words for each plane
-            for (int plane = 0; plane < bcm_bits; plane++) {
-                if ((level >> plane) & 1) { // Check if brightness bit for this bitplane is set
-                    lhs_words[plane][entry->cycle] |= entry->lhs_mask; // Use mask to set bit
-                    rhs_words[plane][entry->cycle] |= entry->rhs_mask;
-                }
-            }
-        }
-    }
-}
-
-// Stores the entire image, word array per BCM bit-plane per column. Sized to BCM_BITS_MAX
+// Stores the entire frame, shift word array per BCM bit-plane per column. Sized to BCM_BITS_MAX
 // only planes 0..bcm_bits-1 are meaningful at any time
-// Double buffered so render.c is never reading a half-built frame: image_*_words is
-// the front buffer render.c reads every revolution, back_*_words is what gets written
-// here. Once every column has landed in the back buffer since the last swap, it's
-// marked ready for render.c to swap in at the next revolution boundary.
+// Double buffered so render.c is never reading a half-built frame: frame_*_words is
+// the front buffer render.c reads every revolution, back_frame_*_words is what gets
+// written here. Once every column has landed in the back buffer since the last swap,
+// it's marked ready for render.c to swap in at the next revolution boundary.
 static uint16_t buffer_lhs[2][NUM_COLUMNS][BCM_BITS_MAX][16]; // front and back buffers
 static uint16_t buffer_rhs[2][NUM_COLUMNS][BCM_BITS_MAX][16];
 
-uint16_t (*image_lhs_words)[BCM_BITS_MAX][16] = buffer_lhs[0];
-uint16_t (*image_rhs_words)[BCM_BITS_MAX][16] = buffer_rhs[0];
-static uint16_t (*back_lhs_words)[BCM_BITS_MAX][16] = buffer_lhs[1];
-static uint16_t (*back_rhs_words)[BCM_BITS_MAX][16] = buffer_rhs[1];
+uint16_t (*frame_lhs_words)[BCM_BITS_MAX][16] = buffer_lhs[0]; // NUM_COLUMNS long
+uint16_t (*frame_rhs_words)[BCM_BITS_MAX][16] = buffer_rhs[0];
+static uint16_t (*back_frame_lhs_words)[BCM_BITS_MAX][16] = buffer_lhs[1];
+static uint16_t (*back_frame_rhs_words)[BCM_BITS_MAX][16] = buffer_rhs[1];
 
 // Tracks which columns of the back buffer have been written since the last swap
 static bool column_written[NUM_COLUMNS];
@@ -97,8 +29,9 @@ static int columns_written_count = 0;
 // So buffers can be swapped when rev has finished
 static volatile bool frame_ready = false;
 
-void frame_buffer_publish_column(int col, const uint8_t frame[LEDS_PER_WING][CHANNELS], int bcm_bits) {
-    frame_buffer_to_planes(frame, bcm_bits, back_lhs_words[col], back_rhs_words[col]);
+void frame_buffer_publish_column(int col, const uint8_t column_levels[LEDS_PER_WING][CHANNELS], int bcm_bits) {
+    // Encode this column's levels into column_words, staged into this column's slot of the back frame
+    shift_encoder_encode(column_levels, bcm_bits, back_frame_lhs_words[col], back_frame_rhs_words[col]);
 
     if (!column_written[col]) {
         column_written[col] = true;
@@ -116,12 +49,12 @@ void frame_buffer_swap_pending(void) {
     if (!frame_ready) return;
 
     // Swap pointers
-    uint16_t (*swap_lhs)[BCM_BITS_MAX][16] = image_lhs_words; // temp stash pointer to swap
-    uint16_t (*swap_rhs)[BCM_BITS_MAX][16] = image_rhs_words;
-    image_lhs_words = back_lhs_words;
-    image_rhs_words = back_rhs_words;
-    back_lhs_words = swap_lhs;
-    back_rhs_words = swap_rhs;
+    uint16_t (*swap_lhs)[BCM_BITS_MAX][16] = frame_lhs_words; // temp stash pointer to swap
+    uint16_t (*swap_rhs)[BCM_BITS_MAX][16] = frame_rhs_words;
+    frame_lhs_words = back_frame_lhs_words;
+    frame_rhs_words = back_frame_rhs_words;
+    back_frame_lhs_words = swap_lhs;
+    back_frame_rhs_words = swap_rhs;
 
     frame_ready = false;
 }

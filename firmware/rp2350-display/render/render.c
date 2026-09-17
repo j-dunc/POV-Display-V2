@@ -1,3 +1,6 @@
+// render: the main render loop. Shows whichever column of the current frame
+// matches shaft angle, timing each BCM bit-plane's on-time to set brightness
+
 #include "render.h"
 #include "image_source.h"
 #include "hall_sensor.h"
@@ -84,7 +87,7 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_cycl
 
             // OE already high here - start this plane's shift and let it run
             // in the background while we spend the blank time needed anyway for duty cycle
-            led_shift_start(image_lhs_words[col_lhs][plane], image_rhs_words[col_rhs][plane]);
+            led_shift_start(frame_lhs_words[col_lhs][plane], frame_rhs_words[col_rhs][plane]);
 
             // Wait until this plane's scheduled on-time, based on real elapsed time
             wait_until_cycle(on_start_cycle);

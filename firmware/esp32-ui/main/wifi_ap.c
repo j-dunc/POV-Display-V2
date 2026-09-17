@@ -1,3 +1,6 @@
+// wifi_ap: starts the board's own SoftAP WiFi network, so a phone/PC can
+// connect directly without an existing network
+
 #include "wifi_ap.h"
 
 #include <string.h>

@@ -37,10 +37,11 @@ pico_sdk_init()
 
 add_executable(rp2350-display
     main.c
-    spi_link.c
+    drivers/spi_link.c
     drivers/led_shift.c
     drivers/hall_sensor.c
     render/frame_buffer.c
+    render/shift_encoder.c
     render/led_map.c
     render/image_source.c
     render/test_patterns.c

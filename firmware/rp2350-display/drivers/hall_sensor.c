@@ -1,3 +1,6 @@
+// hall_sensor: reads the two hall-effect sensors and derives shaft angle,
+// RPM, and revolution period from their edge timing
+
 #include "hall_sensor.h"
 #include "pins.h"
 

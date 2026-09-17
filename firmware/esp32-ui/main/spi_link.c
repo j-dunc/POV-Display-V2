@@ -1,3 +1,6 @@
+// spi_link: ESP32 side of the RP2350<->ESP32 SPI link. ESP32 is the SPI
+// master; sends command/response transactions to push frames and calibration
+
 #include "spi_link.h"
 #include "pins.h"
 

@@ -1,3 +1,6 @@
+// test_patterns: built-in diagnostic patterns (ramps, rainbow, radial white)
+// for tuning calibration without needing an uploaded image
+
 #include "test_patterns.h"
 #include "image_source.h"
 #include "frame_buffer.h"
@@ -10,20 +13,18 @@
 void test_pattern_build_channel_ramp(int channel) {
     int bcm_bits = image_source_get_bcm_bits();
 
-    // Column content is a function of angle only, not which wing so frame same for each wing
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
+    // Column content is a function of angle only, not which wing so column_levels same for each wing
+    uint8_t column_levels[LEDS_PER_WING][CHANNELS] = {0}; // other channels stay 0 for the whole pattern
 
     for (int col = 0; col < NUM_COLUMNS; col++) {
-        frame_buffer_clear(frame);
-
         uint8_t level_255 = (uint8_t)(col * 255 / (NUM_COLUMNS - 1));
 
         for (int led = 0; led < LEDS_PER_WING; led++) {
-            frame_buffer_set(frame, led, channel, image_source_apply_calibration(level_255, channel, led, col));
+            column_levels[led][channel] = image_source_apply_calibration(level_255, channel, led, col);
         }
 
         // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, bcm_bits);
+        frame_buffer_publish_column(col, column_levels, bcm_bits);
     }
 }
 
@@ -33,22 +34,19 @@ void test_pattern_build_channel_ramp(int channel) {
 void test_pattern_build_gray_ramp(void) {
     int bcm_bits = image_source_get_bcm_bits();
 
-    // Column content is a function of angle only, not which wing so frame same for each wing
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
+    uint8_t column_levels[LEDS_PER_WING][CHANNELS];
 
     for (int col = 0; col < NUM_COLUMNS; col++) {
-        frame_buffer_clear(frame);
-
         uint8_t level_255 = (uint8_t)(col * 255 / (NUM_COLUMNS - 1));
 
         for (int led = 0; led < LEDS_PER_WING; led++) {
             for (int ch = 0; ch < CHANNELS; ch++) {
-                frame_buffer_set(frame, led, ch, image_source_apply_calibration(level_255, ch, led, col));
+                column_levels[led][ch] = image_source_apply_calibration(level_255, ch, led, col);
             }
         }
 
         // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, bcm_bits);
+        frame_buffer_publish_column(col, column_levels, bcm_bits);
     }
 }
 
@@ -58,18 +56,16 @@ void test_pattern_build_gray_ramp(void) {
 void test_pattern_build_radial_white(void) {
     int bcm_bits = image_source_get_bcm_bits();
 
-    // Column content same for each column so build once
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
-    frame_buffer_clear(frame);
+    uint8_t column_levels[LEDS_PER_WING][CHANNELS];
     for (int led = 0; led < LEDS_PER_WING; led++) {
         for (int ch = 0; ch < CHANNELS; ch++) {
-            frame_buffer_set(frame, led, ch, image_source_apply_calibration(255, ch, led, 0));
+            column_levels[led][ch] = image_source_apply_calibration(255, ch, led, 0);
         }
     }
 
     for (int col = 0; col < NUM_COLUMNS; col++) {
         // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, bcm_bits);
+        frame_buffer_publish_column(col, column_levels, bcm_bits);
     }
 }
 
@@ -101,24 +97,21 @@ static void hue_to_rgb(float hue_deg, uint8_t rgb[CHANNELS]) {
 void test_pattern_build_rainbow(void) {
     int bcm_bits = image_source_get_bcm_bits();
 
-    // Column content is a function of angle only, not which wing so frame same for each wing
-    uint8_t frame[LEDS_PER_WING][CHANNELS];
+    uint8_t column_levels[LEDS_PER_WING][CHANNELS];
 
     // Draw each column at the determined hsv converted to rgb
     for (int col = 0; col < NUM_COLUMNS; col++) {
-        frame_buffer_clear(frame);
-
         float hue = 360.0f * col / NUM_COLUMNS;
         uint8_t rgb[CHANNELS];
         hue_to_rgb(hue, rgb);
 
         for (int led = 0; led < LEDS_PER_WING; led++) {
             for (int ch = 0; ch < CHANNELS; ch++) {
-                frame_buffer_set(frame, led, ch, image_source_apply_calibration(rgb[ch], ch, led, col));
+                column_levels[led][ch] = image_source_apply_calibration(rgb[ch], ch, led, col);
             }
         }
 
         // Encodes column and stages it in the back buffer, swapping it in once the full frame has landed
-        frame_buffer_publish_column(col, frame, bcm_bits);
+        frame_buffer_publish_column(col, column_levels, bcm_bits);
     }
 }
