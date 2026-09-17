@@ -33,4 +33,18 @@ menu "POV Display Configuration"
             The board is reachable at http://<hostname>.local instead of
             its raw IP, on devices that support mDNS (most phones/PCs).
 
+    config ESP_STA_WIFI_SSID
+        string "Existing WiFi SSID (STA test mode only)"
+        default ""
+        help
+            Only used when WIFI_CONNECT_TO_EXISTING_AP is set to 1 in
+            wifi_ap.c.
+
+    config ESP_STA_WIFI_PASSWORD
+        string "Existing WiFi password (STA test mode only)"
+        default ""
+        help
+            Only used when WIFI_CONNECT_TO_EXISTING_AP is set to 1 in
+            wifi_ap.c.
+
 endmenu
