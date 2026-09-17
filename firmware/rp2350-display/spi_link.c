@@ -1,7 +1,6 @@
 #include "spi_link.h"
 #include "pins.h"
 #include "hall_sensor.h"
-#include "render.h"
 #include "image_source.h"
 
 #include "hardware/spi.h"
@@ -139,15 +138,13 @@ void spi_link_command_loop(void) {
                 if (!(bcm_bits_f >= 1.0f)) bcm_bits_f = 1.0f; // minimum floor is 1, also catches NaN
                 if (bcm_bits_f > (float)BCM_BITS_MAX) bcm_bits_f = (float)BCM_BITS_MAX;
 
-                image_source_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma, payload.dither_enabled != 0.0f, (int)bcm_bits_f);
-                render_set_max_duty_fraction(payload.max_duty_fraction);
+                image_source_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma, payload.max_duty_fraction, payload.dither_enabled != 0.0f, (int)bcm_bits_f);
                 break;
             }
 
             case CMD_GET_CALIBRATION: {
                 calibration_payload_t payload;
                 image_source_get_calibration(&payload);
-                payload.max_duty_fraction = render_get_max_duty_fraction();
                 if (!spi_write_with_timeout((uint8_t *)&payload, sizeof(payload))) continue;
                 break;
             }

@@ -12,13 +12,6 @@ shaft angle. Ties together hall_sensor (angle/rpm), image_source
 // Builds image
 void render_init(void);
 
-// Sets the fraction of each BCM plane's on-time the LEDs are driven for
-void render_set_max_duty_fraction(float fraction);
-
-// Reads back the current max duty fraction
-float render_get_max_duty_fraction(void);
-
-
 /*
 Call continuously from the main loop. Shifts out a new column whenever the
 shaft has rotated into the next one; blanks the display (OE high) if the

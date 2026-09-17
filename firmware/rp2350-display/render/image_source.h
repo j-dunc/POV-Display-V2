@@ -22,12 +22,15 @@ void image_source_show_test_pattern(uint8_t pattern_id);
 void image_source_set_column(int col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]);
 
 // Updates the live colour calibration (per-channel balance scale, gamma,
-// radial falloff correction, ordered dithering, and BCM bit depth) and
-// redraws. bcm_bits is clamped to [1, BCM_BITS_MAX]
-void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, bool dither_enabled, int bcm_bits);
+// radial falloff correction, max duty fraction, ordered dithering, and BCM
+// bit depth) and redraws. bcm_bits is clamped to [1, BCM_BITS_MAX]
+void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, float max_duty_fraction, bool dither_enabled, int bcm_bits);
 
 // Reads back the current live colour calibration
 void image_source_get_calibration(calibration_payload_t *out);
 
 // Reads back the current active BCM bit depth
 int image_source_get_bcm_bits(void);
+
+// Reads back the current max duty fraction
+float image_source_get_max_duty_fraction(void);

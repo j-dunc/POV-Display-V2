@@ -10,12 +10,14 @@
 // per channel linear scale
 // shared gamma exponent
 // radial exponent (corrects for LEDs near centre appearing brighter)
+// max duty fraction (brightness) - limits current to avoid brownout
 // BCM bit depth (1-8)
 // tuned via SPI with CMD_SET_CALIBRATION
 typedef struct {
     float scale[CHANNELS];
     float gamma;
     float radial_gamma;
+    float max_duty_fraction;
     bool dither_enabled;
     int bcm_bits;
 } color_calibration_t;
@@ -25,6 +27,7 @@ static color_calibration_t calibration = {
     .scale = { 1.5f, 0.75f, 0.45f }, // R, G, B
     .gamma = 3.5f,
     .radial_gamma = 0.3f, // 0 = no radial correction
+    .max_duty_fraction = 0.2f,
     .dither_enabled = true,
     .bcm_bits = 8,
 };
@@ -119,12 +122,13 @@ typedef enum {
 static image_source_mode_t current_mode = IMAGE_SOURCE_NONE;
 static uint8_t current_test_pattern_id = 0;
 
-void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, bool dither_enabled, int bcm_bits) {
+void image_source_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, float max_duty_fraction, bool dither_enabled, int bcm_bits) {
     calibration.scale[RED] = r_scale;
     calibration.scale[GREEN] = g_scale;
     calibration.scale[BLUE] = b_scale;
     calibration.gamma = gamma;
     calibration.radial_gamma = radial_gamma;
+    calibration.max_duty_fraction = max_duty_fraction;
     calibration.dither_enabled = dither_enabled;
     if (bcm_bits < 1) bcm_bits = 1; // clamp
     if (bcm_bits > BCM_BITS_MAX) bcm_bits = BCM_BITS_MAX;
@@ -153,12 +157,17 @@ void image_source_get_calibration(calibration_payload_t *out) {
     out->b_scale = calibration.scale[BLUE];
     out->gamma = calibration.gamma;
     out->radial_gamma = calibration.radial_gamma;
+    out->max_duty_fraction = calibration.max_duty_fraction;
     out->dither_enabled = calibration.dither_enabled ? 1.0f : 0.0f;
     out->bcm_bits = (float)calibration.bcm_bits;
 }
 
 int image_source_get_bcm_bits(void) {
     return calibration.bcm_bits;
+}
+
+float image_source_get_max_duty_fraction(void) {
+    return calibration.max_duty_fraction;
 }
 
 // Calls the test_pattern_build_* function for one TEST_PATTERN_* id, and records

@@ -12,19 +12,6 @@
 #include "hardware/clocks.h"
 #include "RP2350.h"
 
-// Fraction of each plane's weighted on-time the LEDs are actually driven for.
-// Caps average current draw instead of a separate PWM/OE layer.
-// Tuned live via SPI with CMD_SET_CALIBRATION
-static float max_duty_fraction = 0.2f;
-
-void render_set_max_duty_fraction(float fraction) {
-    max_duty_fraction = fraction;
-}
-
-float render_get_max_duty_fraction(void) {
-    return max_duty_fraction;
-}
-
 // Which RHS column is currently on display, -1 if display is blanked
 static int last_col_rhs = -1;
 
@@ -91,7 +78,7 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_cycl
 
             uint32_t weight = 1u << plane; // plane's weight in the level, e.g. plane 5 = bit 5 = 32
             uint32_t slot_cycles = column_dwell_cycles * weight / bcm_max_level / ((plane == 0) ? 1 : 2); // weight according to plane weight, and half except for smallest plane
-            uint32_t on_cycles = (uint32_t)(slot_cycles * max_duty_fraction); // Scale all slots by the same factor keeps the ratio so only affects overall brightness
+            uint32_t on_cycles = (uint32_t)(slot_cycles * image_source_get_max_duty_fraction()); // Scale all slots by the same factor keeps the ratio so only affects overall brightness
             cumulative_cycle += slot_cycles;
             uint32_t on_start_cycle = cumulative_cycle - on_cycles; // when this plane's on-time should begin
 
