@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+
 // Blank below this RPM
 #define MIN_READABLE_RPM 100.0f
 
@@ -21,6 +23,9 @@ swaps in - lower is faster playback. Frames only ever swap on a revolution
 boundary, so playback fps is (revolutions per second / revs_per_frame)
 */
 void render_set_revs_per_frame(int revs_per_frame);
+
+// Sets whether whole display is blanked
+void render_set_blanked(bool blanked);
 
 /*
 Call continuously from the main loop. Shifts out a new column whenever the

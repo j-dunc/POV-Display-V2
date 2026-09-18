@@ -16,6 +16,9 @@
 #define CMD_SET_CALIBRATION 0x04
 #define CMD_GET_CALIBRATION 0x05
 #define CMD_SHOW_TEST_PATTERN 0x06
+#define CMD_ANIM_BEGIN     0x07
+#define CMD_ANIM_COLUMN    0x08
+#define CMD_ANIM_END       0x09
 
 // GET_STATUS response payload
 typedef struct {
@@ -43,6 +46,19 @@ typedef struct {
     float bcm_bits; // BCM bit depth, 1-BCM_BITS_MAX (8) - float for uniform layout, rounded and clamped on receipt
 } calibration_payload_t;
 #define CALIBRATION_PAYLOAD_SIZE (sizeof(calibration_payload_t))
+
+
+// ANIM_BEGIN payload: 2-byte frame count (little-endian), then 1 byte revs_per_frame
+// Erases flash for frame count
+// ANIM_COLUMN payload: same layout as PUSH_COLUMN
+// Sends one column at a time in order
+// ANIM_END has no payload
+// Signals to play animation
+// None reply
+#define ANIM_BEGIN_PAYLOAD_SIZE 3
+// frame stride approx 43kB
+// reserved flash = 15MB
+#define MAX_ANIMATION_FRAMES 300  
 
 // SHOW_TEST_PATTERN payload: 1-byte pattern ID, one of TEST_PATTERN_*. No reply.
 #define TEST_PATTERN_PAYLOAD_SIZE 1

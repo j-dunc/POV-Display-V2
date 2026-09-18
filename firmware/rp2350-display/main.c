@@ -5,13 +5,14 @@
 
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "pico/flash.h"
 #include "led_shift.h"
 #include "hall_sensor.h"
 #include "led_map.h"
 #include "shift_encoder.h"
 #include "image_source.h"
 #include "render.h"
-#include "animation.h"
+#include "spi_link.h"
 
 int main(void)
 {
@@ -22,11 +23,11 @@ int main(void)
     build_led_map();
     shift_encoder_init();
     rebuild_calibration();
-    render_init();
-    animation_init();
+    render_init(); // display blanked until something uploaded
+    flash_safe_execute_core_init();
 
-    // TEMPORARY: animation playback in place of the SPI link - no ESP32 involved
-    multicore_launch_core1(animation_task);
+    // Blocking loop on core 1: handles SPI commands, and builds animation frames in the gaps
+    multicore_launch_core1(spi_link_command_loop);
 
     while (true) {
         render_update();

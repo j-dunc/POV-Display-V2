@@ -5,8 +5,11 @@
 #include <string.h>
 
 #include "hardware/flash.h"
-#include "hardware/sync.h"
+#include "pico/flash.h"
 #include "pico/stdlib.h"
+
+// Coordination timeout with the other core
+#define FLASH_SAFE_EXECUTE_TIMEOUT_MS 1000
 
 // Reserve space for firmware
 #define ANIMATION_FLASH_OFFSET (1u * 1024 * 1024)
@@ -46,15 +49,20 @@ static uint8_t page_buffer[FLASH_PAGE_SIZE];
 static uint32_t page_fill; // how many bytes of page buffer are used
 static uint32_t page_offset; // flash offset the next full page lands at
 
+// Callback for flash_safe_execute - runs with interrupts disabled and the other core locked out
+// so that its safe to erase/program flash
+static void program_page(void *param) {
+    (void)param; // discarded
+    flash_range_program(page_offset, page_buffer, FLASH_PAGE_SIZE);
+}
+
 // write page into flash and flush it
 // pad with zeros if not full
 static void page_flush(void) {
     if (page_fill == 0) return;
 
     memset(page_buffer + page_fill, 0, FLASH_PAGE_SIZE - page_fill); // pad out a part-filled page
-    uint32_t ints = save_and_disable_interrupts(); // interrupts disabled while writing
-    flash_range_program(page_offset, page_buffer, FLASH_PAGE_SIZE); // write page to flash
-    restore_interrupts(ints);
+    flash_safe_execute(program_page, NULL, FLASH_SAFE_EXECUTE_TIMEOUT_MS);
 
     page_offset += FLASH_PAGE_SIZE;
     page_fill = 0;
@@ -75,6 +83,17 @@ static void page_append(const uint8_t *src, uint32_t len) {
     }
 }
 
+// Params for erase_chunk, since flash_safe_execute only passes one void*
+typedef struct {
+    uint32_t offset;
+    uint32_t size;
+} erase_chunk_params_t;
+
+static void erase_chunk(void *param) {
+    erase_chunk_params_t *p = (erase_chunk_params_t *)param;
+    flash_range_erase(p->offset, p->size);
+}
+
 // Erases flash ready for write
 bool animation_store_begin_write(uint32_t frame_count) {
     stored_frame_count = 0; // nothing valid to read while a write is in progress
@@ -84,15 +103,14 @@ bool animation_store_begin_write(uint32_t frame_count) {
     uint32_t needed = frame_count * FRAME_STRIDE;
     if (needed > ANIMATION_REGION_BYTES) return false;
 
-    // Erase a chunk at a time, so interrupts aren't disabled the entire erase
+    // Erase a chunk at a time, so the other core is only locked out for one chunk at a time
     uint32_t erase_bytes = ((needed + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE) * FLASH_SECTOR_SIZE; // round up to multiple of flash sector size
     for (uint32_t done = 0; done < erase_bytes; done += ERASE_CHUNK_BYTES) {
         uint32_t chunk = erase_bytes - done;
         if (chunk > ERASE_CHUNK_BYTES) chunk = ERASE_CHUNK_BYTES;
 
-        uint32_t ints = save_and_disable_interrupts();
-        flash_range_erase(ANIMATION_FLASH_OFFSET + done, chunk);
-        restore_interrupts(ints);
+        erase_chunk_params_t params = { ANIMATION_FLASH_OFFSET + done, chunk };
+        if (flash_safe_execute(erase_chunk, &params, FLASH_SAFE_EXECUTE_TIMEOUT_MS) != PICO_OK) return false;
     }
 
     page_offset = ANIMATION_FLASH_OFFSET;

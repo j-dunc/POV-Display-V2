@@ -5,6 +5,9 @@
 #include "pins.h"
 #include "hall_sensor.h"
 #include "image_source.h"
+#include "animation.h"
+#include "animation_store.h"
+#include "render.h"
 
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
@@ -94,6 +97,15 @@ void spi_link_init(void) {
     gpio_put(PIN_RP_ESP32_GPIO, 0);
 }
 
+// True between ANIM_BEGIN and ANIM_END
+static bool uploading = false;
+
+// Called if an upload breaks off part way - so display doesn't stay blanked and uploading isnt blocked
+static void abort_upload(void) {
+    uploading = false;
+    render_set_blanked(false);
+}
+
 void spi_link_command_loop(void) {
     spi_link_init();
 
@@ -101,7 +113,11 @@ void spi_link_command_loop(void) {
 
         // Read CMD from ESP32
         uint8_t cmd;
-        if (!spi_read_with_timeout(&cmd, 1)) continue;
+        if (!spi_read_with_timeout(&cmd, 1)) {
+            // No CMD from ESP32 so spend idle time building next frame
+            if (!uploading) animation_build_next_frame(); // Don't build while uploading
+            continue;
+        }
 
         // Carry out CMD
         switch (cmd) {
@@ -149,6 +165,45 @@ void spi_link_command_loop(void) {
                 calibration_payload_t payload;
                 image_source_get_calibration(&payload);
                 if (!spi_write_with_timeout((uint8_t *)&payload, sizeof(payload))) continue;
+                break;
+            }
+
+            case CMD_ANIM_BEGIN: {
+                uint8_t payload[ANIM_BEGIN_PAYLOAD_SIZE];
+                if (!spi_read_with_timeout(payload, sizeof(payload))) continue;
+
+                uint16_t frame_count = payload[0] | (payload[1] << 8); // reassemble bytes (little-endian)
+                int revs_per_frame = payload[2];
+
+                render_set_blanked(true); // blank for the whole upload
+                if (animation_store_begin_write(frame_count)) {
+                    uploading = true;
+                    render_set_revs_per_frame(revs_per_frame);
+                } else {
+                    render_set_blanked(false); // nothing to upload into - don't stay blanked
+                }
+                break;
+            }
+
+            case CMD_ANIM_COLUMN: {
+                uint8_t payload[FRAME_COLUMN_PAYLOAD_SIZE];
+                if (!spi_read_with_timeout(payload, sizeof(payload))) {
+                    abort_upload(); // upload failed - abort
+                    continue;
+                }
+                if (!uploading) break; // column outside an upload - ignore
+
+                int col = payload[0] | (payload[1] << 8);
+                animation_store_write_column(col, (const uint8_t (*)[CHANNELS])&payload[2]);
+                break;
+            }
+
+            case CMD_ANIM_END: {
+                if (uploading) {
+                    animation_store_end_write();
+                    uploading = false;
+                    render_set_blanked(false);
+                }
                 break;
             }
 

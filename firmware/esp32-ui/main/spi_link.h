@@ -34,3 +34,8 @@ bool spi_link_get_calibration(calibration_payload_t *out);
 // Sends CMD_SHOW_TEST_PATTERN - displays one of the TEST_PATTERN_* built-in
 // calibration patterns, generated on the RP2350
 bool spi_link_show_test_pattern(uint8_t pattern_id);
+
+// Animation upload: call begin, then column one column at a time in order, then end
+bool spi_link_animation_begin(uint16_t frame_count, uint8_t revs_per_frame);
+bool spi_link_animation_column(uint16_t col, const uint8_t rgb[LEDS_PER_WING][CHANNELS]);
+bool spi_link_animation_end(void);

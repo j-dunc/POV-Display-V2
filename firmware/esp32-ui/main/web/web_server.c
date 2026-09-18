@@ -9,6 +9,7 @@
 #include "spi_link.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 static const char *TAG = "web_server";
 
@@ -132,7 +133,84 @@ static esp_err_t frame_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// Routing table entries for POST and OPTIONS for /frame 
+// Receives exactly len bytes, looping since one recv can return a partial read
+static bool recv_exact(httpd_req_t *req, uint8_t *buf, int len) {
+    int received = 0;
+    while (received < len) {
+        int ret = httpd_req_recv(req, (char *)(buf + received), len - received);
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue; // retry on timeout
+        if (ret <= 0) return false;
+        received += ret;
+    }
+    return true;
+}
+
+// Accepts whole animation as raw 0-255 RGB, frames in order, each with columns in order
+// Frame count is from body length
+// Streamed straight to RP2350 a column at a time rather than holding in RAM
+// Optional ?revs=N sets how many revolutions each frame is held for, setting playback speed
+static esp_err_t animation_post_handler(httpd_req_t *req) {
+    add_cors_headers(req);
+
+    // Validate content length
+    if (req->content_len <= 0 || req->content_len % FRAME_BYTES != 0) {
+        ESP_LOGW(TAG, "animation size %d is not a whole number of %d-byte frames", (int)req->content_len, FRAME_BYTES);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "size must be a whole number of frames");
+        return ESP_FAIL;
+    }
+    int frame_count = req->content_len / FRAME_BYTES;
+    if (frame_count > MAX_ANIMATION_FRAMES) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "too many frames for the flash region");
+        return ESP_FAIL;
+    }
+
+    // Playback speed, defaulting to 2 revolutions per frame (~10fps at 1200rpm)
+    int revs_per_frame = 2;
+    char query[32];
+    char value[8];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK
+        && httpd_query_key_value(query, "revs", value, sizeof(value)) == ESP_OK) {
+        revs_per_frame = atoi(value); // to int
+    }
+    if (revs_per_frame < 1) revs_per_frame = 1;
+
+    ESP_LOGI(TAG, "animation upload: %d frames, %d revs/frame", frame_count, revs_per_frame);
+    if (!spi_link_animation_begin(frame_count, revs_per_frame)) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "RP2350 did not accept the upload");
+        return ESP_FAIL;
+    }
+
+    // Send one column across SPI at a time - only receive one column from http at a time to save RAM
+    uint8_t column[LEDS_PER_WING][CHANNELS];
+    for (int frame = 0; frame < frame_count; frame++) {
+        for (int col = 0; col < NUM_COLUMNS; col++) {
+            if (!recv_exact(req, (uint8_t *)column, sizeof(column))) { // only receive one column
+                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "receive failed");
+                return ESP_FAIL;
+            }
+            if (!spi_link_animation_column(col, column)) { // send the one column
+                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "push to RP2350 failed");
+                return ESP_FAIL;
+            }
+        }
+    }
+
+    if (!spi_link_animation_end()) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "RP2350 did not finish the upload");
+        return ESP_FAIL;
+    }
+
+    httpd_resp_send(req, "OK", HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
+static const httpd_uri_t animation_post_uri = {
+    .uri = "/animation",
+    .method = HTTP_POST,
+    .handler = animation_post_handler,
+};
+
+// Routing table entries for POST and OPTIONS for /frame
 static const httpd_uri_t frame_post_uri = {
     .uri = "/frame",
     .method = HTTP_POST,
@@ -302,6 +380,7 @@ void web_server_start(void) {
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &upload_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibrate_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &status_js_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &animation_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_options_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_get_uri));

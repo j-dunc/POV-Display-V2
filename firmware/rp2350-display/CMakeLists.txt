@@ -66,6 +66,7 @@ target_link_libraries(rp2350-display
         hardware_spi
         hardware_flash
         pico_multicore
+        pico_flash
         cmsis_core)
 
 # PCB has 16MB flash

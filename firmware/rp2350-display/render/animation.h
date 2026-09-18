@@ -1,8 +1,6 @@
 #pragma once
 
-// Writes the built-in test animation to flash
-void animation_init(void);
-
-// Core 1 entry point: plays the stored animation, building the next frame into
-// the frame buffer's back buffer while render.c displays the current one
-void animation_task(void);
+// Builds the next frame of the stored animation into the frame buffer's back buffer,
+// if it's free. Returns straight away when there's nothing to do, so core 1 can call
+// it in the gaps between servicing SPI
+void animation_build_next_frame(void);

@@ -27,6 +27,13 @@ void render_set_revs_per_frame(int new_revs_per_frame) {
     revolutions_since_swap = 0; // restart the count so the change takes effect cleanly
 }
 
+// Set to blank whole display e.g during uploads
+static volatile bool blanked = false;
+
+void render_set_blanked(bool new_blanked) {
+    blanked = new_blanked;
+}
+
 // Absolute cycle at which the next column is scheduled to start
 static uint32_t next_column_start_cycle;
 
@@ -118,6 +125,12 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_cycl
 }
 
 void render_update(void) {
+    if (blanked) {
+        gpio_put(PIN_OE, 1);
+        last_col_rhs = -1; // force a fresh column once unblanked
+        return;
+    }
+
     uint64_t now = time_us_64();
 
     float angle = hall_sensor_get_angle_deg(now); // 0 deg = HE_0 = RHS wing tip
