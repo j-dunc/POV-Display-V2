@@ -11,6 +11,7 @@
 
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
+#include "hardware/dma.h"
 #include "pico/time.h"
 
 #include "spi_protocol.h"
@@ -18,59 +19,58 @@
 #define SPI_TRANSFER_TIMEOUT_US 50000
 
 
-// SPI functions with timeout so failed transfers do not hang core
-// Returns false if timeout occured
-// Also controls ready line handshake
+static int rx_dma_chan = -1;
+static int tx_dma_chan = -1;
+
+// Returns false if timeout occured. Also controls ready line handshake
 static bool spi_read_with_timeout(uint8_t *dst, size_t len) {
-    absolute_time_t deadline = make_timeout_time_us(SPI_TRANSFER_TIMEOUT_US);
     gpio_put(PIN_RP_ESP32_GPIO, 1); // ready to receive
 
-    for (size_t i = 0; i < len; i++) {
-        spi_get_hw(spi1)->dr = 0; // Write dummy tx byte to data register
-        while (!spi_is_readable(spi1)) { // Check if transfer complete
-            if (time_reached(deadline)) {
-                spi_link_init(); // reset rather than leave core 1 hanging (also lowers ready)
-                return false;
-            }
+    // Receive rx bytes with DMA
+    dma_channel_config c = dma_channel_get_default_config(rx_dma_chan);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    channel_config_set_read_increment(&c, false); // always the same SPI FIFO register
+    channel_config_set_write_increment(&c, true); // walk forward through dst
+    channel_config_set_dreq(&c, spi_get_dreq(spi1, false)); // paced by bytes actually arriving
+    dma_channel_configure(rx_dma_chan, &c, dst, &spi_get_hw(spi1)->dr, len, true); // true: start now
+
+    absolute_time_t deadline = make_timeout_time_us(SPI_TRANSFER_TIMEOUT_US);
+    while (dma_channel_is_busy(rx_dma_chan)) {
+        if (time_reached(deadline)) {
+            dma_channel_abort(rx_dma_chan);
+            spi_link_init(); // reset rather than leave core 1 hanging (also lowers ready)
+            return false;
         }
-        dst[i] = (uint8_t)spi_get_hw(spi1)->dr; // Read byte
     }
 
     gpio_put(PIN_RP_ESP32_GPIO, 0); // busy
     return true;
 }
 
-// Fills FIFO before raising ready to ensure no garbage is clocked out
+// Returns false if timeout occured. Also controls ready line handshake
 static bool spi_write_with_timeout(const uint8_t *src, size_t len) {
-    absolute_time_t deadline = make_timeout_time_us(SPI_TRANSFER_TIMEOUT_US);
+    // Send Tx bytes with DMA
+    dma_channel_config c = dma_channel_get_default_config(tx_dma_chan);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    channel_config_set_read_increment(&c, true); // walk forward through src
+    channel_config_set_write_increment(&c, false); // always the same SPI FIFO register
+    channel_config_set_dreq(&c, spi_get_dreq(spi1, true)); // paced by FIFO space freeing up
+    dma_channel_configure(tx_dma_chan, &c, &spi_get_hw(spi1)->dr, src, len, true); // true: start now
 
-    size_t queued = 0;
-    // Loop until all sent or FIFO full
-    while (queued < len && spi_is_writable(spi1)) {
-        spi_get_hw(spi1)->dr = src[queued++];
-    }
     gpio_put(PIN_RP_ESP32_GPIO, 1); // ready with the reply
 
-    for (size_t i = 0; i < len; i++) {
-        if (i >= queued) { // anything beyond the initial burst still needs pacing
-            while (!spi_is_writable(spi1)) {
-                if (time_reached(deadline)) {
-                    spi_link_init(); // also lowers ready
-                    return false;
-                }
-            }
-            spi_get_hw(spi1)->dr = src[i]; // Write byte
+    absolute_time_t deadline = make_timeout_time_us(SPI_TRANSFER_TIMEOUT_US);
+    while (dma_channel_is_busy(tx_dma_chan)) {
+        if (time_reached(deadline)) {
+            dma_channel_abort(tx_dma_chan);
+            spi_link_init(); // reset rather than leave core 1 hanging (also lowers ready)
+            return false;
         }
-
-        // Discard unwanted rx bytes
-        while (!spi_is_readable(spi1)) {
-            if (time_reached(deadline)) {
-                spi_link_init(); // also lowers ready
-                return false;
-            }
-        }
-        (void)spi_get_hw(spi1)->dr;
     }
+
+    while (spi_get_hw(spi1)->sr & SPI_SSPSR_BSY_BITS) tight_loop_contents(); // wait until spi busy flag is cleared
+    while (spi_is_readable(spi1)) (void)spi_get_hw(spi1)->dr; // drain leftover rx bytes (SPI is full duplex despite not needed)
+    spi_get_hw(spi1)->icr = SPI_SSPICR_RORIC_BITS; // clear overrun flag (rx overrun fine as not used)
 
     gpio_put(PIN_RP_ESP32_GPIO, 0); // busy
     return true;
@@ -95,10 +95,18 @@ void spi_link_init(void) {
     gpio_init(PIN_RP_ESP32_GPIO);
     gpio_set_dir(PIN_RP_ESP32_GPIO, GPIO_OUT);
     gpio_put(PIN_RP_ESP32_GPIO, 0);
+
+    // Only claim once (this function runs on spi-link resets also)
+    if (rx_dma_chan < 0) rx_dma_chan = dma_claim_unused_channel(true);
+    if (tx_dma_chan < 0) tx_dma_chan = dma_claim_unused_channel(true);
 }
 
 // True between ANIM_BEGIN and ANIM_END
 static bool uploading = false;
+
+// When the last upload command landed
+static absolute_time_t last_upload_activity;
+#define UPLOAD_IDLE_TIMEOUT_US (5 * 1000 * 1000)
 
 // Called if an upload breaks off part way - so display doesn't stay blanked and uploading isnt blocked
 static void abort_upload(void) {
@@ -114,8 +122,12 @@ void spi_link_command_loop(void) {
         // Read CMD from ESP32
         uint8_t cmd;
         if (!spi_read_with_timeout(&cmd, 1)) {
-            // No CMD from ESP32 so spend idle time building next frame
-            if (!uploading) animation_build_next_frame(); // Don't build while uploading
+            if (uploading) {
+                // Don't build frames mid upload - but don't stay parked if the upload died
+                if (absolute_time_diff_us(last_upload_activity, get_absolute_time()) > UPLOAD_IDLE_TIMEOUT_US) abort_upload();
+            } else {
+                animation_build_next_frame(); // No CMD from ESP32 so spend idle time building next frame
+            }
             continue;
         }
 
@@ -143,6 +155,7 @@ void spi_link_command_loop(void) {
 
                 int col = payload[0] | (payload[1] << 8); // reassemble bytes (little-endian)
                 if (col >= 0 && col < NUM_COLUMNS) {
+                    animation_store_clear(); // a pushed frame takes the display over from any animation
                     image_source_set_column(col, (const uint8_t (*)[CHANNELS])&payload[2]); // Note we send a pointer to the 3rd element (skipping column index), and cast this to a pointer to arrays of 3 (arrays of 3 channel LEDs)
                 }
                 break;
@@ -158,12 +171,14 @@ void spi_link_command_loop(void) {
                 if (bcm_bits_f > (float)BCM_BITS_MAX) bcm_bits_f = (float)BCM_BITS_MAX;
 
                 image_source_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma, payload.max_duty_fraction, payload.dither_enabled != 0.0f, (int)bcm_bits_f);
+                render_set_revs_per_frame((int)payload.revs_per_frame);
                 break;
             }
 
             case CMD_GET_CALIBRATION: {
                 calibration_payload_t payload;
                 image_source_get_calibration(&payload);
+                payload.revs_per_frame = (float)render_get_revs_per_frame(); // lives in render, not image_source
                 if (!spi_write_with_timeout((uint8_t *)&payload, sizeof(payload))) continue;
                 break;
             }
@@ -173,12 +188,11 @@ void spi_link_command_loop(void) {
                 if (!spi_read_with_timeout(payload, sizeof(payload))) continue;
 
                 uint16_t frame_count = payload[0] | (payload[1] << 8); // reassemble bytes (little-endian)
-                int revs_per_frame = payload[2];
 
                 render_set_blanked(true); // blank for the whole upload
                 if (animation_store_begin_write(frame_count)) {
                     uploading = true;
-                    render_set_revs_per_frame(revs_per_frame);
+                    last_upload_activity = get_absolute_time();
                 } else {
                     render_set_blanked(false); // nothing to upload into - don't stay blanked
                 }
@@ -193,6 +207,7 @@ void spi_link_command_loop(void) {
                 }
                 if (!uploading) break; // column outside an upload - ignore
 
+                last_upload_activity = get_absolute_time();
                 int col = payload[0] | (payload[1] << 8);
                 animation_store_write_column(col, (const uint8_t (*)[CHANNELS])&payload[2]);
                 break;
@@ -211,6 +226,7 @@ void spi_link_command_loop(void) {
                 uint8_t pattern_id;
                 if (!spi_read_with_timeout(&pattern_id, TEST_PATTERN_PAYLOAD_SIZE)) continue;
 
+                animation_store_clear(); // a test pattern takes the display over from any animation
                 image_source_show_test_pattern(pattern_id);
                 break;
             }

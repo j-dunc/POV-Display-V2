@@ -27,7 +27,7 @@ static SemaphoreHandle_t ready_sem;
 #define READY_TIMEOUT_MS 500
 
 // ANIM_BEGIN erases flash before raising ready flag - so much longer timeout needed
-#define ANIM_ERASE_TIMEOUT_MS 30000
+#define ANIM_ERASE_TIMEOUT_MS 180000
 
 
 // Interrupt fires on the rising edge of the RP2350's ready line
@@ -166,11 +166,10 @@ static bool send_command(uint8_t cmd, const void *payload, size_t len) {
     return true;
 }
 
-bool spi_link_animation_begin(uint16_t frame_count, uint8_t revs_per_frame) {
+bool spi_link_animation_begin(uint16_t frame_count) {
     WORD_ALIGNED_ATTR uint8_t payload[ANIM_BEGIN_PAYLOAD_SIZE]; // Must be word aligned for DMA
     payload[0] = frame_count & 0xFF; // Lower byte
     payload[1] = (frame_count >> 8) & 0xFF; // Upper byte
-    payload[2] = revs_per_frame;
 
     ESP_LOGI(TAG, "animation upload starting: %u frames", frame_count);
     if (!send_command(CMD_ANIM_BEGIN, payload, sizeof(payload))) return false;
@@ -234,8 +233,8 @@ bool spi_link_push_frame(const uint8_t frame[NUM_COLUMNS][LEDS_PER_WING][CHANNEL
     return true;
 }
 
-bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, float max_duty_fraction, bool dither_enabled, float bcm_bits) {
-    WORD_ALIGNED_ATTR calibration_payload_t payload = { r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled ? 1.0f : 0.0f, bcm_bits }; // Must be word aligned for DMA
+bool spi_link_set_calibration(float r_scale, float g_scale, float b_scale, float gamma, float radial_gamma, float max_duty_fraction, bool dither_enabled, float bcm_bits, float revs_per_frame) {
+    WORD_ALIGNED_ATTR calibration_payload_t payload = { r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled ? 1.0f : 0.0f, bcm_bits, revs_per_frame }; // Must be word aligned for DMA
 
     return send_command(CMD_SET_CALIBRATION, &payload, sizeof(payload));
 }

@@ -27,6 +27,10 @@ void render_set_revs_per_frame(int new_revs_per_frame) {
     revolutions_since_swap = 0; // restart the count so the change takes effect cleanly
 }
 
+int render_get_revs_per_frame(void) {
+    return revs_per_frame;
+}
+
 // Set to blank whole display e.g during uploads
 static volatile bool blanked = false;
 
@@ -91,6 +95,12 @@ static void show_column_bcm(int col_lhs, int col_rhs, uint32_t column_dwell_cycl
 
     for (int half = 0; half < 2; half++) {
         for (int i = 0; i < bcm_bits; i++) {
+            // Ensure we blank as soon as blanked is changed
+            if (blanked) {
+                gpio_put(PIN_OE, 1);
+                return;
+            }
+
             int plane = (half == 0) ? (bcm_bits - 1 - i) : i; // descending then ascending
 
             if (half == 1 && plane == 0) continue; // smallest plane already shown once, full weight, at the end of half 0 so do not repeat

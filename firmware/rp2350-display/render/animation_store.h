@@ -22,3 +22,7 @@ void animation_store_write_column(int col, const uint8_t rgb[LEDS_PER_WING][CHAN
 
 // Marks the animation written since begin_write as ready to play
 void animation_store_end_write(void);
+
+// Forgets the stored animation so it stops playing, letting a pushed frame or test
+// pattern hold the display. The flash contents are left alone, erased by a new upload
+void animation_store_clear(void);

@@ -24,6 +24,9 @@ boundary, so playback fps is (revolutions per second / revs_per_frame)
 */
 void render_set_revs_per_frame(int revs_per_frame);
 
+// Reads back the revolutions per frame currently in use
+int render_get_revs_per_frame(void);
+
 // Sets whether whole display is blanked
 void render_set_blanked(bool blanked);
 

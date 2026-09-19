@@ -63,6 +63,10 @@
         <input type="range" id="bcmInput" min="1" max="8" step="1">
     </div>
     <div class="control">
+        <label>Animation speed <span id="revsVal"></span></label>
+        <input type="range" id="revsInput" min="1" max="10" step="1">
+    </div>
+    <div class="control">
         <label>Test patterns (previews show the uncalibrated target to compare against)</label>
         <div id="testPatterns">
             <div class="testPatternItem">
@@ -107,6 +111,8 @@ const dutyUnlockInput = document.getElementById('dutyUnlockInput');
 const ditherInput = document.getElementById('ditherInput');
 const bcmInput = document.getElementById('bcmInput');
 const bcmVal = document.getElementById('bcmVal');
+const revsInput = document.getElementById('revsInput');
+const revsVal = document.getElementById('revsVal');
 const DUTY_SAFE_MAX = 0.3;
 const rVal = document.getElementById('rVal');
 const gVal = document.getElementById('gVal');
@@ -225,6 +231,7 @@ function updateLabels() {
     radialVal.textContent = radialInput.value;
     dutyVal.textContent = dutyInput.value;
     bcmVal.textContent = `${bcmInput.value}-bit (${1 << bcmInput.value} levels)`;
+    revsVal.textContent = `${revsInput.value} rev${revsInput.value == 1 ? '' : 's'} per animation frame`;
 }
 
 // Debounce (so dragging doesn't flood SPI)
@@ -236,8 +243,8 @@ function scheduleSend() {
 
 // Send calibration values via POST endpoint
 async function sendCalibration() {
-    // 8 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled, bcm_bits - matches calibration_payload_t
-    const buf = new ArrayBuffer(32);
+    // 9 little-endian float32s: r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled, bcm_bits, revs_per_frame - matches calibration_payload_t
+    const buf = new ArrayBuffer(36);
     const view = new DataView(buf);
     view.setFloat32(0, parseFloat(rInput.value), true);
     view.setFloat32(4, parseFloat(gInput.value), true);
@@ -247,6 +254,7 @@ async function sendCalibration() {
     view.setFloat32(20, parseFloat(dutyInput.value), true);
     view.setFloat32(24, ditherInput.checked ? 1.0 : 0.0, true);
     view.setFloat32(28, parseFloat(bcmInput.value), true);
+    view.setFloat32(32, parseFloat(revsInput.value), true);
 
     statusEl.textContent = 'sending...';
     try {
@@ -261,7 +269,7 @@ async function sendCalibration() {
     }
 }
 
-for (const input of [rInput, gInput, bInput, gammaInput, radialInput, dutyInput, bcmInput]) {
+for (const input of [rInput, gInput, bInput, gammaInput, radialInput, dutyInput, bcmInput, revsInput]) {
     input.addEventListener('input', () => {
         updateLabels();
         scheduleSend();
@@ -307,6 +315,7 @@ async function loadCalibration() {
         dutyInput.value = duty;
         ditherInput.checked = view.getFloat32(24, true) !== 0;
         bcmInput.value = view.getFloat32(28, true);
+        revsInput.value = view.getFloat32(32, true);
         updateLabels();
         statusEl.textContent = '';
     } catch (err) {

@@ -47,6 +47,7 @@
     </div>
 </div>
 
+<script src="/gif.js"></script>
 <script>
 const NUM_COLUMNS = 298;   // angular samples per rev
 const LEDS_PER_WING = 48;  // radial samples
@@ -57,6 +58,9 @@ const ROTATION_OFFSET_RAD = ROTATION_OFFSET_DEG * Math.PI / 180;
 // NxN sub-samples averaged per polar cell for antialiasing - resets to this default on reload
 const AA_DEFAULT = 3;
 let SUPERSAMPLE = AA_DEFAULT;
+
+const MAX_ANIMATION_FRAMES = 300; // matches the RP2350's flash region
+const PREVIEW_MS = 100; // source preview playback rate - unrelated to the real on-device speed (set by revs per frame on the calibration page)
 
 const fileInput = document.getElementById('fileInput');
 const fitModeInput = document.getElementById('fitModeInput');
@@ -75,39 +79,128 @@ aaVal.textContent = `${AA_DEFAULT}x${AA_DEFAULT}`;
 aaInput.addEventListener('input', () => {
     SUPERSAMPLE = parseInt(aaInput.value, 10);
     aaVal.textContent = SUPERSAMPLE == 1 ? 'off' : `${SUPERSAMPLE}x${SUPERSAMPLE}`;
-    if (lastImg) processImage(lastImg);
+    if (sources.length) processImage(sources[0]); // reprocess if there is at least one frame
 });
 
-let lastFrame = null; // most recently sampled frame, for the send button
-let lastImg = null; // most recently loaded image, so fit/colour changes can re-run without re-uploading
+let sources = []; // decoded images - one per GIF frame, or one for a still, so settings changes can re-run without reloading the file
+let previewTimer = null;
+let previewIndex = 0;
 
-// On file input, load image and process it
-fileInput.addEventListener('change', () => {
+// On file input, decode and process
+fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0];
     if (!file) return;
 
-    const img = new Image();
-    img.onload = () => {
-        lastImg = img;
-        processImage(img);
-    };
-    img.src = URL.createObjectURL(file);
-});
-
-// Reprocess image on fit/bg changes
-fitModeInput.addEventListener('change', () => { if (lastImg) processImage(lastImg); });
-bgColorInput.addEventListener('input', () => { if (lastImg) processImage(lastImg); });
-
-// Send POST frame when send button clicked
-sendBtn.addEventListener('click', async () => {
-    if (!lastFrame) return;
-    statusEl.textContent = 'sending...';
+    stopPreview();
+    for (const src of sources) src.close?.(); // decoded GIF frames hold their pixels until closed
+    sources = [];
+    sendBtn.disabled = true;
+    statusEl.textContent = 'decoding...';
 
     try {
-        const res = await fetch('/frame', {
+        sources = await decodeFile(file);
+    } catch (err) {
+        sources = [];
+        statusEl.textContent = `decode failed: ${err.message}`;
+        return;
+    }
+    processImage(sources[0]);
+    if (sources.length > 1) startPreview();
+});
+
+// Cycles the source canvas through every frame so you can preview animation
+// the reconstruction canvas is left showing frame 0 as sampling is too slow to be done live
+function startPreview() {
+    previewIndex = 0;
+    previewTimer = setInterval(() => {
+        previewIndex = (previewIndex + 1) % sources.length;
+        drawSource(sources[previewIndex]);
+        drawCropCircle();
+    }, PREVIEW_MS);
+}
+
+function stopPreview() {
+    clearInterval(previewTimer);
+    previewTimer = null;
+}
+
+// Reprocess reconstructed preview on fit/bg changes
+fitModeInput.addEventListener('change', () => { if (sources.length) processImage(sources[0]); });
+bgColorInput.addEventListener('input', () => { if (sources.length) processImage(sources[0]); });
+
+// Decodes file into a list of images
+// One per frame if a GIF, one for a still
+async function decodeFile(file) {
+    if (file.type !== 'image/gif') {
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => reject(new Error('could not load image'));
+            img.src = URL.createObjectURL(file);
+        });
+        return [img];
+    }
+
+    const reader = new GifReader(new Uint8Array(await file.arrayBuffer()));
+    const composited = compositeGifFrames(reader);
+    if (composited.length > MAX_ANIMATION_FRAMES) {
+        throw new Error(`GIF has ${composited.length} frames, max is ${MAX_ANIMATION_FRAMES}`);
+    }
+
+    const out = [];
+    for (const frame of composited) out.push(await createImageBitmap(frame));
+    return out;
+}
+
+// Decodes every GIF frame with omggif and composites them into full-screen images, applying each frame's disposal method
+function compositeGifFrames(reader) {
+    const width = reader.width, height = reader.height;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+
+    const out = [];
+    for (let i = 0; i < reader.numFrames(); i++) {
+        const info = reader.frameInfo(i);
+
+        // "Restore to previous" disposal needs a snapshot from before this frame is drawn
+        const preSnapshot = info.disposal === 3 ? pixels.slice() : null;
+
+        reader.decodeAndBlitFrameRGBA(i, pixels);
+        out.push(new ImageData(pixels.slice(), width, height));
+
+        if (info.disposal === 2) { // restore to background - clear this frame's sub-rect to transparent
+            for (let row = info.y; row < info.y + info.height; row++) {
+                pixels.fill(0, (row * width + info.x) * 4, (row * width + info.x + info.width) * 4);
+            }
+        } else if (info.disposal === 3) {
+            pixels.set(preSnapshot);
+        }
+        // disposal 0 or 1 ("do not dispose"): leave pixels as-is for the next frame
+    }
+    return out;
+}
+
+// Send POST frame/animation when send button clicked
+sendBtn.addEventListener('click', async () => {
+    if (!sources.length) return;
+
+    // A single frame goes straight to the display, several are stored in flash as an animation
+    const animation = sources.length > 1;
+    statusEl.textContent = animation
+        ? `sending ${sources.length} frames - the display blanks while flash is written, this takes a while...`
+        : 'sending...';
+
+    const sampled = sources.map(sampleImage);
+    let body = sampled[0];
+    if (animation) {
+        body = new Uint8Array(sampled.length * sampled[0].length);
+        sampled.forEach((frame, i) => body.set(frame, i * frame.length));
+    }
+
+    try {
+        const res = await fetch(animation ? '/animation' : '/frame', {
             method: 'POST',
             headers: { 'Content-Type': 'application/octet-stream' },
-            body: lastFrame,
+            body,
         });
         statusEl.textContent = res.ok ? 'sent!' : `error: ${res.status} ${await res.text()}`;
     } catch (err) {
@@ -115,7 +208,9 @@ sendBtn.addEventListener('click', async () => {
     }
 });
 
-function processImage(img) {
+// Draws one source into the source canvas, scaled and centred. No crop circle - it
+// would be sampled into the frame
+function drawSource(img) {
     const srcCtx = sourceCanvas.getContext('2d');
     const size = sourceCanvas.width;
 
@@ -136,20 +231,30 @@ function processImage(img) {
     const dw = img.width * scale;
     const dh = img.height * scale;
     srcCtx.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
+}
 
-    // Read image and sample to polar
-    const pixels = srcCtx.getImageData(0, 0, size, size);
-    const frame = sampleToPolarFrame(pixels, size, ROTATION_OFFSET_RAD);
-
-    // Add outline circle overlay
+function drawCropCircle() {
+    const srcCtx = sourceCanvas.getContext('2d');
+    const size = sourceCanvas.width;
     srcCtx.strokeStyle = '#0f0';
     srcCtx.beginPath();
     srcCtx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
     srcCtx.stroke();
+}
 
-    drawReconstruction(frame, size, ROTATION_OFFSET_RAD);
+// Draws and samples one source into a polar frame
+function sampleImage(img) {
+    const size = sourceCanvas.width;
+    drawSource(img);
+    const pixels = sourceCanvas.getContext('2d').getImageData(0, 0, size, size);
+    return sampleToPolarFrame(pixels, size, ROTATION_OFFSET_RAD);
+}
 
-    lastFrame = frame;
+function processImage(img) {
+    const frame = sampleImage(img);
+    drawCropCircle();
+    drawReconstruction(frame, sourceCanvas.width, ROTATION_OFFSET_RAD);
+
     sendBtn.disabled = false;
     statusEl.textContent = '';
 }

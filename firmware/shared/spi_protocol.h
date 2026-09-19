@@ -44,18 +44,19 @@ typedef struct {
     float max_duty_fraction;
     float dither_enabled; // 1.0 = on, 0.0 = off - float for uniform layout with the rest of this struct
     float bcm_bits; // BCM bit depth, 1-BCM_BITS_MAX (8) - float for uniform layout, rounded and clamped on receipt
+    float revs_per_frame; // revolutions each animation frame is held for - animation playback speed
 } calibration_payload_t;
 #define CALIBRATION_PAYLOAD_SIZE (sizeof(calibration_payload_t))
 
 
-// ANIM_BEGIN payload: 2-byte frame count (little-endian), then 1 byte revs_per_frame
+// ANIM_BEGIN payload: 2-byte frame count (little-endian)
 // Erases flash for frame count
 // ANIM_COLUMN payload: same layout as PUSH_COLUMN
 // Sends one column at a time in order
 // ANIM_END has no payload
 // Signals to play animation
 // None reply
-#define ANIM_BEGIN_PAYLOAD_SIZE 3
+#define ANIM_BEGIN_PAYLOAD_SIZE 2
 // frame stride approx 43kB
 // reserved flash = 15MB
 #define MAX_ANIMATION_FRAMES 300  

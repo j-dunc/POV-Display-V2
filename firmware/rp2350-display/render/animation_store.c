@@ -128,3 +128,7 @@ void animation_store_write_column(int col, const uint8_t rgb[LEDS_PER_WING][CHAN
 void animation_store_end_write(void) {
     stored_frame_count = pending_frame_count;
 }
+
+void animation_store_clear(void) {
+    stored_frame_count = 0;
+}

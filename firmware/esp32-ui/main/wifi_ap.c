@@ -15,7 +15,7 @@ static const char *TAG = "wifi_ap";
 
 // Set to 1 to join existing WiFi in station mode
 // Set to 0 to host WiFi AP
-#define WIFI_CONNECT_TO_EXISTING_AP 1
+#define WIFI_CONNECT_TO_EXISTING_AP 0
 #define WIFI_STA_SSID CONFIG_ESP_STA_WIFI_SSID
 #define WIFI_STA_PASSWORD CONFIG_ESP_STA_WIFI_PASSWORD
 

@@ -9,17 +9,18 @@
 #include "spi_link.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 
 static const char *TAG = "web_server";
 
-// converter.html, calibrate.html and status.js from embedded text files
+// converter.html, calibrate.html, status.js and gif.js from embedded text files
 extern const uint8_t converter_html_start[] asm("_binary_converter_html_start");
 extern const uint8_t converter_html_end[] asm("_binary_converter_html_end");
 extern const uint8_t calibrate_html_start[] asm("_binary_calibrate_html_start");
 extern const uint8_t calibrate_html_end[] asm("_binary_calibrate_html_end");
 extern const uint8_t status_js_start[] asm("_binary_status_js_start");
 extern const uint8_t status_js_end[] asm("_binary_status_js_end");
+extern const uint8_t gif_js_start[] asm("_binary_gif_js_start");
+extern const uint8_t gif_js_end[] asm("_binary_gif_js_end");
 
 // Handles request defined by upload_uri below
 static esp_err_t upload_get_handler(httpd_req_t *req) {
@@ -81,6 +82,21 @@ static const httpd_uri_t status_js_uri = {
     .handler = status_js_get_handler,
 };
 
+// Handles request defined by gif_js_uri below
+static esp_err_t gif_js_get_handler(httpd_req_t *req) {
+    httpd_resp_set_type(req, "application/javascript");
+    httpd_resp_send(req, (const char *)gif_js_start,
+                     gif_js_end - gif_js_start - 1); // -1: remove null terminator at end
+    return ESP_OK;
+}
+
+// Routing table entry: GET "/gif.js" -> gif_js_get_handler
+static const httpd_uri_t gif_js_uri = {
+    .uri = "/gif.js",
+    .method = HTTP_GET,
+    .handler = gif_js_get_handler,
+};
+
 #define FRAME_BYTES (NUM_COLUMNS * LEDS_PER_WING * CHANNELS)
 
 static uint8_t frame_buf[NUM_COLUMNS][LEDS_PER_WING][CHANNELS];
@@ -92,8 +108,8 @@ static void add_cors_headers(httpd_req_t *req) {
     httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type");
 }
 
-// OPTIONS needed if POST sent from external origin
-static esp_err_t frame_options_handler(httpd_req_t *req) {
+// OPTIONS needed if POST sent from external origin - same reply for every endpoint
+static esp_err_t cors_options_handler(httpd_req_t *req) {
     add_cors_headers(req);
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
@@ -148,7 +164,6 @@ static bool recv_exact(httpd_req_t *req, uint8_t *buf, int len) {
 // Accepts whole animation as raw 0-255 RGB, frames in order, each with columns in order
 // Frame count is from body length
 // Streamed straight to RP2350 a column at a time rather than holding in RAM
-// Optional ?revs=N sets how many revolutions each frame is held for, setting playback speed
 static esp_err_t animation_post_handler(httpd_req_t *req) {
     add_cors_headers(req);
 
@@ -164,18 +179,8 @@ static esp_err_t animation_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    // Playback speed, defaulting to 2 revolutions per frame (~10fps at 1200rpm)
-    int revs_per_frame = 2;
-    char query[32];
-    char value[8];
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK
-        && httpd_query_key_value(query, "revs", value, sizeof(value)) == ESP_OK) {
-        revs_per_frame = atoi(value); // to int
-    }
-    if (revs_per_frame < 1) revs_per_frame = 1;
-
-    ESP_LOGI(TAG, "animation upload: %d frames, %d revs/frame", frame_count, revs_per_frame);
-    if (!spi_link_animation_begin(frame_count, revs_per_frame)) {
+    ESP_LOGI(TAG, "animation upload: %d frames", frame_count);
+    if (!spi_link_animation_begin(frame_count)) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "RP2350 did not accept the upload");
         return ESP_FAIL;
     }
@@ -210,6 +215,12 @@ static const httpd_uri_t animation_post_uri = {
     .handler = animation_post_handler,
 };
 
+static const httpd_uri_t animation_options_uri = {
+    .uri = "/animation",
+    .method = HTTP_OPTIONS,
+    .handler = cors_options_handler,
+};
+
 // Routing table entries for POST and OPTIONS for /frame
 static const httpd_uri_t frame_post_uri = {
     .uri = "/frame",
@@ -220,17 +231,10 @@ static const httpd_uri_t frame_post_uri = {
 static const httpd_uri_t frame_options_uri = {
     .uri = "/frame",
     .method = HTTP_OPTIONS,
-    .handler = frame_options_handler,
+    .handler = cors_options_handler,
 };
 
-// OPTIONS needed if POST sent from external origin
-static esp_err_t calibration_options_handler(httpd_req_t *req) {
-    add_cors_headers(req);
-    httpd_resp_send(req, NULL, 0);
-    return ESP_OK;
-}
-
-// Accepts 8 little-endian float32s (r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled, bcm_bits) and forwards to RP2350
+// Accepts 9 little-endian float32s (r_scale, g_scale, b_scale, gamma, radial_gamma, max_duty_fraction, dither_enabled, bcm_bits) and forwards to RP2350
 static esp_err_t calibration_post_handler(httpd_req_t *req) {
     add_cors_headers(req);
 
@@ -255,7 +259,7 @@ static esp_err_t calibration_post_handler(httpd_req_t *req) {
     }
 
     // Send calibration values
-    if (!spi_link_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma, payload.max_duty_fraction, payload.dither_enabled != 0.0f, payload.bcm_bits)) {
+    if (!spi_link_set_calibration(payload.r_scale, payload.g_scale, payload.b_scale, payload.gamma, payload.radial_gamma, payload.max_duty_fraction, payload.dither_enabled != 0.0f, payload.bcm_bits, payload.revs_per_frame)) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "push to RP2350 failed");
         return ESP_FAIL;
     }
@@ -295,7 +299,7 @@ static const httpd_uri_t calibration_post_uri = {
 static const httpd_uri_t calibration_options_uri = {
     .uri = "/calibration",
     .method = HTTP_OPTIONS,
-    .handler = calibration_options_handler,
+    .handler = cors_options_handler,
 };
 
 // Reports the RP2350's current status as JSON, from an SPI transaction
@@ -323,13 +327,6 @@ static const httpd_uri_t status_get_uri = {
     .method = HTTP_GET,
     .handler = status_get_handler,
 };
-
-// OPTIONS needed if POST sent from external origin
-static esp_err_t test_pattern_options_handler(httpd_req_t *req) {
-    add_cors_headers(req);
-    httpd_resp_send(req, NULL, 0);
-    return ESP_OK;
-}
 
 // Accepts a 1-byte TEST_PATTERN_* id and forwards to RP2350
 static esp_err_t test_pattern_post_handler(httpd_req_t *req) {
@@ -366,13 +363,13 @@ static const httpd_uri_t test_pattern_post_uri = {
 static const httpd_uri_t test_pattern_options_uri = {
     .uri = "/test-pattern",
     .method = HTTP_OPTIONS,
-    .handler = test_pattern_options_handler,
+    .handler = cors_options_handler,
 };
 
 void web_server_start(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 16; // default of 8 isn't enough for all the routes registered below
+    config.max_uri_handlers = 20; // default of 8 isn't enough for all the routes registered below
 
     ESP_LOGI(TAG, "starting server on port %d", config.server_port);
     ESP_ERROR_CHECK(httpd_start(&server, &config));
@@ -380,7 +377,9 @@ void web_server_start(void) {
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &upload_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibrate_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &status_js_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &gif_js_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &animation_post_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &animation_options_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_post_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &frame_options_uri));
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &calibration_get_uri));
