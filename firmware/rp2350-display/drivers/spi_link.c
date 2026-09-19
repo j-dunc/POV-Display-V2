@@ -216,6 +216,7 @@ void spi_link_command_loop(void) {
             case CMD_ANIM_END: {
                 if (uploading) {
                     animation_store_end_write();
+                    animation_reset(); // so the display shows the new animation, not whatever the old one left behind
                     uploading = false;
                     render_set_blanked(false);
                 }

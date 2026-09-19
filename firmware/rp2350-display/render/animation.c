@@ -26,6 +26,15 @@ static void build_frame(uint32_t index) {
     }
 }
 
+static uint32_t index = 0;
+
+// Restarts playback from the first frame, building and swapping it in
+void animation_reset(void) {
+    index = 0;
+    animation_build_next_frame();
+    frame_buffer_swap_pending(); // show immediately
+}
+
 void animation_build_next_frame(void) {
     uint32_t frame_count = animation_store_frame_count();
     if (frame_count == 0) return; // nothing stored - leave the display blank
@@ -33,7 +42,6 @@ void animation_build_next_frame(void) {
     // Wait for current built frame to be swapped in before filling back buffer again
     if (!frame_buffer_back_buffer_free()) return;
 
-    static uint32_t index = 0; // note as static this only resets on first run
     if (index >= frame_count) index = 0; // an upload may have shortened the animation
 
     build_frame(index);
