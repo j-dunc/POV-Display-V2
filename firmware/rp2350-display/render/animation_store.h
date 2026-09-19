@@ -5,8 +5,12 @@
 
 #include "frame_geometry.h"
 
-// Frames currently in flash, 0 until animation_store_end_write has been called this boot
+// Frames currently in flash, 0 if there is no animation to play
 uint32_t animation_store_frame_count(void);
+
+// Picks up the animation left in flash by the last completed upload, so it plays again
+// Call at startup
+void animation_store_init(void);
 
 // Reads one column out of a stored frame, straight from flash through XIP
 // Raw uncalibrated 0-255 RGB

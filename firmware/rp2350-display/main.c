@@ -11,6 +11,7 @@
 #include "led_map.h"
 #include "shift_encoder.h"
 #include "image_source.h"
+#include "animation_store.h"
 #include "render.h"
 #include "spi_link.h"
 
@@ -24,6 +25,7 @@ int main(void)
     shift_encoder_init();
     rebuild_calibration();
     render_init(); // display blanked until something uploaded
+    animation_store_init(); // replays the last uploaded animation, if there is one
     flash_safe_execute_core_init();
 
     // Blocking loop on core 1: handles SPI commands, and builds animation frames in the gaps

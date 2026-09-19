@@ -15,6 +15,9 @@
 #define ANIMATION_FLASH_OFFSET (1u * 1024 * 1024)
 #define ANIMATION_REGION_BYTES (PICO_FLASH_SIZE_BYTES - ANIMATION_FLASH_OFFSET)
 
+// The first page of the region holds the frame count
+#define ANIMATION_DATA_OFFSET (ANIMATION_FLASH_OFFSET + FLASH_PAGE_SIZE)
+
 #define FRAME_BYTES (NUM_COLUMNS * LEDS_PER_WING * CHANNELS)
 
 // flash_range_program only takes whole 256-byte pages, so each frame is padded up
@@ -34,10 +37,19 @@ uint32_t animation_store_frame_count(void) {
     return stored_frame_count;
 }
 
+// Picks up whatever the last completed upload left in flash
+void animation_store_init(void) {
+    uint32_t count;
+    memcpy(&count, (const void *)(XIP_BASE + ANIMATION_FLASH_OFFSET), sizeof(count));
+
+    // Erased flash reads back as 0xFFFFFFFF, so a count too big to fit means nothing is stored
+    if (count > 0 && count <= ANIMATION_REGION_BYTES / FRAME_STRIDE) stored_frame_count = count;
+}
+
 void animation_store_read_column(uint32_t frame_index, int col, uint8_t dest[LEDS_PER_WING][CHANNELS]) {
     uint32_t column_bytes = LEDS_PER_WING * CHANNELS;
     // Calculate flash offset for column - initial offset -> start of frame -> column within it
-    uint32_t column_offset = ANIMATION_FLASH_OFFSET + frame_index * FRAME_STRIDE + (uint32_t)col * column_bytes;
+    uint32_t column_offset = ANIMATION_DATA_OFFSET + frame_index * FRAME_STRIDE + (uint32_t)col * column_bytes;
     // XIP_BASE is the address where flash is mapped in memory - add columnn offset in flash to get pointer to column
     // Copy raw bytes from column pointer to destination pointer
     memcpy(dest, (const void *)(XIP_BASE + column_offset), column_bytes);
@@ -100,7 +112,7 @@ bool animation_store_begin_write(uint32_t frame_count) {
 
     // Return false if no frames or too many frames for space remaining
     if (frame_count == 0) return false;
-    uint32_t needed = frame_count * FRAME_STRIDE;
+    uint32_t needed = FLASH_PAGE_SIZE + frame_count * FRAME_STRIDE; // frame count page, then the frames
     if (needed > ANIMATION_REGION_BYTES) return false;
 
     // Erase a chunk at a time, so the other core is only locked out for one chunk at a time
@@ -113,7 +125,7 @@ bool animation_store_begin_write(uint32_t frame_count) {
         if (flash_safe_execute(erase_chunk, &params, FLASH_SAFE_EXECUTE_TIMEOUT_MS) != PICO_OK) return false;
     }
 
-    page_offset = ANIMATION_FLASH_OFFSET;
+    page_offset = ANIMATION_DATA_OFFSET;
     page_fill = 0;
     pending_frame_count = frame_count;
     return true;
@@ -126,6 +138,12 @@ void animation_store_write_column(int col, const uint8_t rgb[LEDS_PER_WING][CHAN
 }
 
 void animation_store_end_write(void) {
+    // Write frame count, note this done last so a failed upload doesn't leave a frame count
+    memset(page_buffer, 0, FLASH_PAGE_SIZE);
+    memcpy(page_buffer, &pending_frame_count, sizeof(pending_frame_count));
+    page_offset = ANIMATION_FLASH_OFFSET;
+    flash_safe_execute(program_page, NULL, FLASH_SAFE_EXECUTE_TIMEOUT_MS);
+
     stored_frame_count = pending_frame_count;
 }
 
