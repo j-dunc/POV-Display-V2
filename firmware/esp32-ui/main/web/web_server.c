@@ -115,6 +115,8 @@ static esp_err_t cors_options_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// *** UNUSED *** Animation is used for stills instead (as one frame animation) as it writes to flash, allowing persistence
+// This endpoint is kept in case we ever want to skip writing to flash (which takes much longer)
 // Accepts one frame of 0-255 RGB and sends to RP2350
 static esp_err_t frame_post_handler(httpd_req_t *req) {
     add_cors_headers(req);

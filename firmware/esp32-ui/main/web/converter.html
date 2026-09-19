@@ -183,21 +183,15 @@ function compositeGifFrames(reader) {
 sendBtn.addEventListener('click', async () => {
     if (!sources.length) return;
 
-    // A single frame goes straight to the display, several are stored in flash as an animation
-    const animation = sources.length > 1;
-    statusEl.textContent = animation
-        ? `sending ${sources.length} frames - the display blanks while flash is written, this takes a while...`
-        : 'sending...';
+    // Everything is stored in flash as an animation - a still is just a one frame one
+    statusEl.textContent = `sending ${sources.length} frame${sources.length > 1 ? 's' : ''} - the display blanks while flash is written, this takes a while...`;
 
     const sampled = sources.map(sampleImage);
-    let body = sampled[0];
-    if (animation) {
-        body = new Uint8Array(sampled.length * sampled[0].length);
-        sampled.forEach((frame, i) => body.set(frame, i * frame.length));
-    }
+    const body = new Uint8Array(sampled.length * sampled[0].length);
+    sampled.forEach((frame, i) => body.set(frame, i * frame.length));
 
     try {
-        const res = await fetch(animation ? '/animation' : '/frame', {
+        const res = await fetch('/animation', {
             method: 'POST',
             headers: { 'Content-Type': 'application/octet-stream' },
             body,
